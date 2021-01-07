@@ -86,7 +86,7 @@ class Player(Bot):
         
         pass
 
-    def calcualte_strength(self, hole, iters): 
+    def calculate_strength(self, hole, iters):
         '''
         A Monte Carlo method meant to estimate the win probability of a pair of 
         hole cards. Simlulates 'iters' games and determines the win rates of our cards
@@ -159,7 +159,7 @@ class Player(Bot):
 
         for i in range(NUM_BOARDS): #calculate strengths for each hole pair
             hole = self.board_allocations[i]
-            strength = self.calcualte_strength(hole, _MONTE_CARLO_ITERS)
+            strength = self.calculate_strength(hole, _MONTE_CARLO_ITERS)
             self.hole_strengths[i] = strength
 
     def handle_round_over(self, game_state, terminal_state, active):
@@ -235,17 +235,17 @@ class Player(Bot):
                 strength = self.hole_strengths[i]
 
                 if street < 3: #pre-flop
-                    raise_ammount = int(my_pips[i] + board_cont_cost + 0.4 * (pot_total + board_cont_cost)) #play a little conservatively pre-flop
+                    raise_amount = int(my_pips[i] + board_cont_cost + 0.4 * (pot_total + board_cont_cost)) #play a little conservatively pre-flop
                 else:
-                    raise_ammount = int(my_pips[i] + board_cont_cost + 0.75 * (pot_total + board_cont_cost)) #raise the stakes deeper into the game
+                    raise_amount = int(my_pips[i] + board_cont_cost + 0.75 * (pot_total + board_cont_cost)) #raise the stakes deeper into the game
                 
-                raise_ammount = max([min_raise, raise_ammount]) #make sure we have a valid raise
-                raise_ammount = min([max_raise, raise_ammount])
+                raise_amount = max([min_raise, raise_amount]) #make sure we have a valid raise
+                raise_amount = min([max_raise, raise_amount])
 
-                raise_cost = raise_ammount - my_pips[i] #how much it costs to make that raise
+                raise_cost = raise_amount - my_pips[i] #how much it costs to make that raise
 
                 if RaiseAction in legal_actions[i] and (raise_cost <= my_stack - net_cost): #raise if we can and if we can afford it
-                    commit_action = RaiseAction(raise_ammount)
+                    commit_action = RaiseAction(raise_amount)
                     commit_cost = raise_cost
                 
                 elif CallAction in legal_actions[i]: 

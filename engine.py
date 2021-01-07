@@ -576,6 +576,7 @@ class Game():
             players = players[::-1]
         self.log.append('')
         self.log.append('Final' + STATUS(players))
+        print('Final' + STATUS(players))
         for player in players:
             player.stop()
         name = GAME_LOG_FILENAME + '.txt'

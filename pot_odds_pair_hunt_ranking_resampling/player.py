@@ -9,7 +9,7 @@ from skeleton.runner import parse_args, run_bot
 
 import eval7
 import random
-
+import time
 
 class Player(Bot):
     '''
@@ -28,6 +28,7 @@ class Player(Bot):
         ''' 
         self.board_allocations = [[], [], []] #keep track of our allocations at round start
         self.hole_strengths = [0, 0, 0] #better representation of our hole strengths (win probability!)
+        self.sampling_duration_total = 0
 
     def allocate_cards(self, my_cards):
         '''
@@ -96,6 +97,8 @@ class Player(Bot):
         iters: a integer that determines how many Monte Carlo samples to take
         '''
 
+        start_sampling_time = time.time()
+
         deck = eval7.Deck() #eval7 object!
         hole_cards = [eval7.Card(card) for card in hole_cards] #card objects, used to evaliate hands
         community_cards = [eval7.Card(card) for card in community_cards]  # card objects, used to evaliate hands
@@ -135,6 +138,12 @@ class Player(Bot):
                 score += 0
         
         hand_strength = score / (2 * iters) #this is our win probability!
+
+        sampling_duration = time.time() - start_sampling_time
+
+        self.sampling_duration_total += sampling_duration
+
+        # print("sampling duration", sampling_duration)
 
         return hand_strength
 
@@ -192,8 +201,11 @@ class Player(Bot):
 
         game_clock = game_state.game_clock #check how much time we have remaining at the end of a game
         round_num = game_state.round_num #Monte Carlo takes a lot of time, we use this to adjust!
+
+        print(round_num)
         if round_num == NUM_ROUNDS:
             print(game_clock)
+            print("total sampling duration", self.sampling_duration_total)
         
 
     def get_actions(self, game_state, round_state, active):
@@ -237,8 +249,6 @@ class Player(Bot):
                 pot_total = my_pips[i] + opp_pips[i] + board_total #total money in the pot right now
                 min_raise, max_raise = round_state.board_states[i].raise_bounds(active, round_state.stacks)
                 # strength = self.hole_strengths[i]
-                print("my cards", my_cards)
-                print("board cards", board_cards)
                 visible_community_cards = [card for card in board_cards[i] if card]
                 strength = self.calculate_strength(self.board_allocations[i], visible_community_cards, 100)
 

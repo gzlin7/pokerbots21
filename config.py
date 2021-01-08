@@ -1,10 +1,10 @@
 # PARAMETERS TO CONTROL THE BEHAVIOR OF THE GAME ENGINE
 # DO NOT REMOVE OR RENAME THIS FILE
 PLAYER_1_NAME = 'Hero'
-PLAYER_1_PATH = './pot_odds_pair_hunt_ranking_resampling'
+PLAYER_1_PATH = './resort_allocs_with_strength'
 # NO TRAILING SLASHES ARE ALLOWED IN PATHS
 PLAYER_2_NAME = 'Villain'
-PLAYER_2_PATH = './fish_and_chips'
+PLAYER_2_PATH = './pot_odds_pair_hunt_ranking_resampling'
 # GAME PROGRESS IS RECORDED HERE
 GAME_LOG_FILENAME = 'gamelog'
 # PLAYER_LOG_SIZE_LIMIT IS IN BYTES

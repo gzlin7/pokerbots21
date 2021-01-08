@@ -30,8 +30,6 @@ class Player(Bot):
             [], [], []]  # keep track of our allocations at round start
         # better representation of our hole strengths (win probability!)
         self.hole_strengths = [0, 0, 0]
-        self.play = [False, False, False]
-        self.num_good_hands = 0
 
     def allocate_cards(self, my_cards):
         '''
@@ -43,10 +41,7 @@ class Player(Bot):
         Arguments:
         my_cards: a list of the 6 cards given to us at round start
         '''
-        self.play = [False, False, False]
         ranks = {}
-        high_rank = {"A", "K", "Q", "J", "T"}
-        med_rank = {"A", "K", "Q", "J", "T", "7", "8", "9"}
 
         for card in my_cards:
             card_rank = card[0]  # 2 - 9, T, J, Q, K, A
@@ -81,30 +76,21 @@ class Player(Bot):
 
         # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
         values = dict(zip('23456789TJQKA', range(2, 15)))
-
         # high ranks better
         pairs.sort(key=lambda x: values[x[0]])
-        singles.sort(key=lambda x: (values[x[0]], x[1]))
+        singles.sort(key=lambda x: values[x[0]])
 
+        # put best cards on best board (best cards last)
         allocation = singles + pairs
 
         # subsequent pairs of cards should be pocket pairs if we found any
         for i in range(NUM_BOARDS):
             cards = [allocation[2*i], allocation[2*i + 1]]
-
-            # only play if the hand is pair, strongly ranked, med rank + suited
-            card1, card2 = cards
-            pair = card1[0] == card2[0]
-            high = card1[0] in high_rank and card2[0] in high_rank
-            suited_med = card1[1] == card2[1] and card1[0] in med_rank and card2[0] in med_rank
-            if pair or high or suited_med:
-                self.play[i] = True
-
             self.board_allocations[i] = cards  # record our allocations
 
         pass
 
-    def calculate_strength(self, hole, iters):
+    def calculate_strength(self, hole, street, iters):
         '''
         A Monte Carlo method meant to estimate the win probability of a pair of 
         hole cards. Simlulates 'iters' games and determines the win rates of our cards
@@ -112,6 +98,7 @@ class Player(Bot):
         Arguments:
         hole: a list of our two hole cards
         iters: a integer that determines how many Monte Carlo samples to take
+        street: community cards
         '''
 
         deck = eval7.Deck()  # eval7 object!
@@ -126,7 +113,7 @@ class Player(Bot):
         for _ in range(iters):  # take 'iters' samples
             deck.shuffle()  # make sure our samples are random
 
-            _COMM = 5  # the number of cards we need to draw
+            _COMM = 5 - len(street)  # the number of cards we need to draw
             _OPP = 2
 
             draw = deck.peek(_COMM + _OPP)
@@ -134,8 +121,8 @@ class Player(Bot):
             opp_hole = draw[: _OPP]
             community = draw[_OPP:]
 
-            our_hand = hole_cards + community  # the two showdown hands
-            opp_hand = opp_hole + community
+            our_hand = hole_cards + community + street  # the two showdown hands
+            opp_hand = opp_hole + community + street
 
             # the ranks of our hands (only useful for comparisons)
             our_hand_value = eval7.evaluate(our_hand)
@@ -175,19 +162,13 @@ class Player(Bot):
         my_cards = round_state.hands[active]
         big_blind = bool(active)  # True if you are the big blind
 
-        _MONTE_CARLO_ITERS = 1000  # the number of monte carlo samples we will use
+        _MONTE_CARLO_ITERS = 100  # the number of monte carlo samples we will use
 
         self.allocate_cards(my_cards)  # our old allocation strategy
 
         for i in range(NUM_BOARDS):  # calculate strengths for each hole pair
-            strength = 0
-            play_chance = 1 if self.play[i] else 0
-
-            if random.random() <= play_chance:
-                self.num_good_hands += 1
-                hole = self.board_allocations[i]
-                strength = self.calculate_strength(hole, _MONTE_CARLO_ITERS)
-
+            hole = self.board_allocations[i]
+            strength = self.calculate_strength(hole, [], _MONTE_CARLO_ITERS)
             self.hole_strengths[i] = strength
 
     def handle_round_over(self, game_state, terminal_state, active):
@@ -223,7 +204,6 @@ class Player(Bot):
         round_num = game_state.round_num
         if round_num == NUM_ROUNDS:
             print(game_clock)
-            print(self.num_good_hands)
 
     def get_actions(self, game_state, round_state, active):
         '''
@@ -262,6 +242,7 @@ class Player(Bot):
         net_cost = 0  # keep track of the net additional amount you are spending across boards this round
 
         my_actions = [None] * NUM_BOARDS
+
         for i in range(NUM_BOARDS):
             if AssignAction in legal_actions[i]:
                 # allocate our cards that we made earlier
@@ -281,12 +262,16 @@ class Player(Bot):
                 pot_total = my_pips[i] + opp_pips[i] + board_total
                 min_raise, max_raise = round_state.board_states[i].raise_bounds(
                     active, round_state.stacks)
-                strength = self.hole_strengths[i]
+
+                hole = self.board_allocations[i]
+                strength = self.calculate_strength(
+                    hole, board_cards[i], 100)
+                self.hole_strengths[i] = strength
 
                 if street < 3:  # pre-flop
                     # play a little conservatively pre-flop
                     raise_amount = int(
-                        my_pips[i] + board_cont_cost + 0.8 * (pot_total + board_cont_cost))
+                        my_pips[i] + board_cont_cost + 0.4 * (pot_total + board_cont_cost))
                 else:
                     # raise the stakes deeper into the game
                     raise_amount = int(
@@ -331,7 +316,7 @@ class Player(Bot):
                             my_actions[i] = CallAction()
                             net_cost += board_cont_cost
 
-                    else:  # Negative Expected Value!!! FOLD!!!
+                    else:  # Negatice Expected Value!!! FOLD!!!
                         my_actions[i] = FoldAction()
                         net_cost += 0
 

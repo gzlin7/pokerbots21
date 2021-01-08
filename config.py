@@ -1,7 +1,7 @@
 # PARAMETERS TO CONTROL THE BEHAVIOR OF THE GAME ENGINE
 # DO NOT REMOVE OR RENAME THIS FILE
 PLAYER_1_NAME = 'Hero'
-PLAYER_1_PATH = './pot_odds_pair_hunt_ranking'
+PLAYER_1_PATH = './pot_odds_pair_hunt'
 # NO TRAILING SLASHES ARE ALLOWED IN PATHS
 PLAYER_2_NAME = 'Villain'
 PLAYER_2_PATH = './pot_odds_pair_hunt_ranking_resampling'

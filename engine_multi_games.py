@@ -480,6 +480,7 @@ class Game():
     def log_board_action(self, name, action, bet_override, board_num):
         '''
         Incorporates action information from a single board into the game log.
+
         Returns code for a single action on one board.
         '''
         if isinstance(action, AssignAction):
@@ -561,28 +562,40 @@ class Game():
         print('/_/  /_/___/ /_/   /_/   \\___/_/\\_\\\\__/_/ /_.__/\\___/\\__/___/')
         print()
         print('Starting the Pokerbots engine...')
-        players = [
-            Player(PLAYER_1_NAME, PLAYER_1_PATH),
-            Player(PLAYER_2_NAME, PLAYER_2_PATH)
-        ]
-        for player in players:
-            player.build()
-            player.run()
-        for round_num in range(1, NUM_ROUNDS + 1):
+
+        game_num = 4
+        logs = dict()
+        for _ in range(game_num):
+            players = [
+                Player(PLAYER_1_NAME, PLAYER_1_PATH),
+                Player(PLAYER_2_NAME, PLAYER_2_PATH)
+            ]
+            for player in players:
+                player.build()
+                player.run()
+            for round_num in range(1, NUM_ROUNDS + 1):
+                self.log.append('')
+                self.log.append('Round #' + str(round_num) + STATUS(players))
+                self.run_round(players)
+                players = players[::-1]
             self.log.append('')
-            self.log.append('Round #' + str(round_num) + STATUS(players))
-            self.run_round(players)
-            players = players[::-1]
-        self.log.append('')
-        self.log.append('Final' + STATUS(players))
-        print('Final' + STATUS(players))
-        for player in players:
-            player.stop()
-        name = GAME_LOG_FILENAME + '.txt'
-        print('Writing', name)
-        with open(name, 'w') as log_file:
-            log_file.write('\n'.join(self.log))
+            self.log.append('Final' + STATUS(players))
+            for p in players:
+                if p.name in logs:
+                    logs[p.name].append(p.bankroll)
+                else:
+                    logs[p.name] = [p.bankroll]
+            print('Final' + STATUS(players))
+            for player in players:
+                player.stop()
+            name = GAME_LOG_FILENAME + '.txt'
+            print('Writing', name)
+            with open(name, 'w') as log_file:
+                log_file.write('\n'.join(self.log))
 
-
+        for player in logs:
+            results = logs[player]
+            print("name:", player, "avg: ", sum(results)/len(results))
+            print("name:", player, "results dump: ", results)
 if __name__ == '__main__':
     Game().run()

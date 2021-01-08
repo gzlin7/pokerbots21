@@ -179,7 +179,7 @@ class Player(Bot):
         my_cards = round_state.hands[active]
         big_blind = bool(active)  # True if you are the big blind
 
-        _MONTE_CARLO_ITERS = 100  # the number of monte carlo samples we will use
+        _MONTE_CARLO_ITERS = 25  # the number of monte carlo samples we will use
 
         self.allocate_cards(my_cards)  # our old allocation strategy
 

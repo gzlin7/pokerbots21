@@ -162,7 +162,7 @@ class Player(Bot):
         my_cards = round_state.hands[active]
         big_blind = bool(active)  # True if you are the big blind
 
-        _MONTE_CARLO_ITERS = 100  # the number of monte carlo samples we will use
+        _MONTE_CARLO_ITERS = 25  # the number of monte carlo samples we will use
 
         self.allocate_cards(my_cards)  # our old allocation strategy
 
@@ -264,8 +264,10 @@ class Player(Bot):
                     active, round_state.stacks)
 
                 hole = self.board_allocations[i]
+                visible_community_cards = [card for card in board_cards[i] if card]
                 strength = self.calculate_strength(
-                    hole, board_cards[i], 100)
+                    hole, visible_community_cards, 25)
+
                 self.hole_strengths[i] = strength
 
                 if street < 3:  # pre-flop

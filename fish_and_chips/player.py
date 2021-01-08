@@ -79,11 +79,14 @@ class Player(Bot):
         if len(pairs) > 0:  # we found a pair! update our state to say that this is a strong round
             self.strong_hole = True
 
-        # sort by rank then suit
-        pairs.sort()
-        singles = sorted(singles, key=lambda x: (x[0], x[1]))
+        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
+        values = dict(zip('23456789TJQKA', range(2, 15)))
 
-        allocation = pairs + singles
+        # high ranks better
+        pairs.sort(key=lambda x: values[x[0]])
+        singles.sort(key=lambda x: (values[x[0]], x[1]))
+
+        allocation = singles + pairs
 
         # subsequent pairs of cards should be pocket pairs if we found any
         for i in range(NUM_BOARDS):

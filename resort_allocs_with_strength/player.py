@@ -85,6 +85,8 @@ class Player(Bot):
             cards = [allocation[2*i], allocation[2*i + 1]]
             self.board_allocations[i] = cards #record our allocations
 
+        self.board_allocations.sort(key=lambda x: self.calculate_strength(x, [], 100))
+
         pass
 
     def calculate_strength(self, hole_cards, community_cards, iters):

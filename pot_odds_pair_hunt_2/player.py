@@ -86,7 +86,7 @@ class Player(Bot):
         
         pass
 
-    def calculate_strength(self, hole, iters):
+    def calculate_strength(self, hole_cards, community_cards, iters):
         '''
         A Monte Carlo method meant to estimate the win probability of a pair of 
         hole cards. Simlulates 'iters' games and determines the win rates of our cards
@@ -97,9 +97,13 @@ class Player(Bot):
         '''
 
         deck = eval7.Deck() #eval7 object!
-        hole_cards = [eval7.Card(card) for card in hole] #card objects, used to evaliate hands
+        hole_cards = [eval7.Card(card) for card in hole_cards] #card objects, used to evaliate hands
+        community_cards = [eval7.Card(card) for card in community_cards]  # card objects, used to evaliate hands
 
         for card in hole_cards: #remove cards that we know about! they shouldn't come up in simulations
+            deck.cards.remove(card)
+
+        for card in community_cards: #remove cards that we know about! they shouldn't come up in simulations
             deck.cards.remove(card)
 
         score = 0
@@ -107,16 +111,16 @@ class Player(Bot):
         for _ in range(iters): #take 'iters' samples
             deck.shuffle() #make sure our samples are random
 
-            _COMM = 5 #the number of cards we need to draw
+            _COMM = 5 - len(community_cards) #the number of cards we need to draw
             _OPP = 2
 
             draw = deck.peek(_COMM + _OPP)
 
             opp_hole = draw[: _OPP]
-            community = draw[_OPP: ]
+            hidden_community = draw[_OPP: ]
 
-            our_hand = hole_cards + community #the two showdown hands
-            opp_hand = opp_hole + community
+            our_hand = hole_cards + community_cards + hidden_community #the two showdown hands
+            opp_hand = opp_hole + community_cards + hidden_community
 
             our_hand_value = eval7.evaluate(our_hand) #the ranks of our hands (only useful for comparisons)
             opp_hand_value = eval7.evaluate(opp_hand)
@@ -159,7 +163,7 @@ class Player(Bot):
 
         for i in range(NUM_BOARDS): #calculate strengths for each hole pair
             hole = self.board_allocations[i]
-            strength = self.calculate_strength(hole, _MONTE_CARLO_ITERS)
+            strength = self.calculate_strength(hole, [], _MONTE_CARLO_ITERS)
             self.hole_strengths[i] = strength
 
     def handle_round_over(self, game_state, terminal_state, active):
@@ -232,7 +236,11 @@ class Player(Bot):
                 board_total = round_state.board_states[i].pot #amount before we started betting
                 pot_total = my_pips[i] + opp_pips[i] + board_total #total money in the pot right now
                 min_raise, max_raise = round_state.board_states[i].raise_bounds(active, round_state.stacks)
-                strength = self.hole_strengths[i]
+                # strength = self.hole_strengths[i]
+                print("my cards", my_cards)
+                print("board cards", board_cards)
+                visible_community_cards = [card for card in board_cards[i] if card]
+                strength = self.calculate_strength([my_cards[2*i], my_cards[2*i+1]], visible_community_cards, 100)
 
                 if street < 3: #pre-flop
                     raise_amount = int(my_pips[i] + board_cont_cost + 0.4 * (pot_total + board_cont_cost)) #play a little conservatively pre-flop

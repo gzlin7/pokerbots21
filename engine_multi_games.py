@@ -591,9 +591,9 @@ class Game():
             for player in players:
                 player.stop()
             name = GAME_LOG_FILENAME + '.txt'
-            print('Writing', name)
-            with open(name, 'w') as log_file:
-                log_file.write('\n'.join(self.log))
+            # print('Writing', name)
+            # with open(name, 'w') as log_file:
+            #     log_file.write('\n'.join(self.log))
 
         for player in logs:
             results = logs[player]

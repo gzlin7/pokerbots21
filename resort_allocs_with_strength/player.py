@@ -204,7 +204,9 @@ class Player(Bot):
         game_clock = game_state.game_clock #check how much time we have remaining at the end of a game
         round_num = game_state.round_num #Monte Carlo takes a lot of time, we use this to adjust!
 
-        print(round_num)
+        print("round over")
+        print()
+
         if round_num == NUM_ROUNDS:
             print(game_clock)
             print("total sampling duration", self.sampling_duration_total)
@@ -238,16 +240,19 @@ class Player(Bot):
 
         my_actions = [None] * NUM_BOARDS
         for i in range(NUM_BOARDS):
+            hole_cards = self.board_allocations[i]
+
             if AssignAction in legal_actions[i]:
-                cards = self.board_allocations[i] #allocate our cards that we made earlier
-                my_actions[i] = AssignAction(cards) #add to our actions
+                my_actions[i] = AssignAction(hole_cards) #add to our actions
 
             elif isinstance(round_state.board_states[i], TerminalState): #make sure the game isn't over at this board
                 my_actions[i] = CheckAction() #check if it is
-            
+
+            # round of active play
             else: #do we add more resources?
                 board_cont_cost = continue_cost[i] #we need to pay this to keep playing
                 board_total = round_state.board_states[i].pot #amount before we started betting
+                print("board total is", board_total, "at board", i)
                 pot_total = my_pips[i] + opp_pips[i] + board_total #total money in the pot right now
                 min_raise, max_raise = round_state.board_states[i].raise_bounds(active, round_state.stacks)
                 # strength = self.hole_strengths[i]
@@ -267,13 +272,17 @@ class Player(Bot):
                 if RaiseAction in legal_actions[i] and (raise_cost <= my_stack - net_cost): #raise if we can and if we can afford it
                     commit_action = RaiseAction(raise_amount)
                     commit_cost = raise_cost
-                
-                elif CallAction in legal_actions[i]: 
+
+                elif CallAction in legal_actions[i] and (board_cont_cost <= my_stack - net_cost):  # call if we can afford it!:
                     commit_action = CallAction()
-                    commit_cost = board_cont_cost #the cost to call is board_cont_cost
-                
-                else: #checking is our only valid move here
+                    commit_cost = board_cont_cost  # the cost to call is board_cont_cost
+
+                elif CheckAction in legal_actions[i]:  # try to check if we can
                     commit_action = CheckAction()
+                    commit_cost = 0
+
+                else:  # we have to fold
+                    commit_action = FoldAction()
                     commit_cost = 0
 
 
@@ -291,10 +300,15 @@ class Player(Bot):
                         if strength > 0.5 and random.random() < strength: #raise sometimes, more likely if our hand is strong
                             my_actions[i] = commit_action
                             net_cost += commit_cost
-                        
-                        else: # at least call if we don't raise
-                            my_actions[i] = CallAction()
-                            net_cost += board_cont_cost
+
+                        else:  # try to call if we don't raise
+                            if (board_cont_cost <= my_stack - net_cost):  # we call because we can afford it and it's +EV
+                                my_actions[i] = CallAction()
+                                net_cost += board_cont_cost
+
+                            else:  # we can't afford to call :(  should have managed our stack better
+                                my_actions[i] = FoldAction()
+                                net_cost += 0
                     
                     else: #Negatice Expected Value!!! FOLD!!!
                         my_actions[i] = FoldAction()

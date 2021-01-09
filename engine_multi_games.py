@@ -595,7 +595,16 @@ class Game():
 
         for player in logs:
             results = logs[player]
-            print("name:", player, "avg: ", sum(results)/len(results))
-            print("name:", player, "results dump: ", results)
+            print(player, "avg: ", sum(results)/len(results))
+        player_1_results = logs[PLAYER_1_NAME]
+        player_1_avg = sum(player_1_results) / len(player_1_results)
+        print(PLAYER_1_NAME, "avg: ", player_1_avg)
+        print()
+        player_2_results = logs[PLAYER_2_NAME]
+        player_2_avg = sum(player_2_results) / len(player_2_results)
+        print(PLAYER_2_NAME, "avg: ", player_2_avg)
+        print()
+        print("avg difference", player_1_avg - player_2_avg)
+            # print("name:", player, "results dump: ", results)
 if __name__ == '__main__':
     Game().run()

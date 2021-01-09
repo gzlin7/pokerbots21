@@ -563,7 +563,8 @@ class Game():
         print()
         print('Starting the Pokerbots engine...')
 
-        game_num = 4
+        game_num = 10
+        player_1_wins = 0
         logs = dict()
         for _ in range(game_num):
             players = [
@@ -585,6 +586,7 @@ class Game():
                     logs[p.name].append(p.bankroll)
                 else:
                     logs[p.name] = [p.bankroll]
+            player_1_wins += (players[0].bankroll > players[1].bankroll)
             print('Final' + STATUS(players))
             for player in players:
                 player.stop()
@@ -605,6 +607,8 @@ class Game():
         print(PLAYER_2_NAME, "avg: ", player_2_avg)
         print()
         print("avg difference", player_1_avg - player_2_avg)
+        print()
+        print("p1 win %:", player_1_wins / game_num)
             # print("name:", player, "results dump: ", results)
 if __name__ == '__main__':
     Game().run()

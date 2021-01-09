@@ -1,0 +1,353 @@
+'''
+Simple example pokerbot, written in Python.
+'''
+from skeleton.actions import FoldAction, CallAction, CheckAction, RaiseAction, AssignAction
+from skeleton.states import GameState, TerminalState, RoundState, BoardState
+from skeleton.states import NUM_ROUNDS, STARTING_STACK, BIG_BLIND, SMALL_BLIND, NUM_BOARDS
+from skeleton.bot import Bot
+from skeleton.runner import parse_args, run_bot
+
+import eval7
+import random
+import time
+
+class Player(Bot):
+    '''
+    A pokerbot.
+    '''
+
+    def __init__(self):
+        '''
+        Called when a new game starts. Called exactly once.
+
+        Arguments:
+        Nothing.
+
+        Returns:
+        Nothing.
+        ''' 
+        self.board_allocations = [[], [], []] #keep track of our allocations at round start
+        self.hole_strengths = [0, 0, 0] #better representation of our hole strengths (win probability!)
+        self.sampling_duration_total = 0
+
+    def allocate_cards(self, my_cards):
+        '''
+        Method that allocates our cards at the beginning of a round. Method
+        modifies self.board_allocations. The method attempts to make pairs
+        by allocating hole cards that share a rank if possible. The exact
+        stack these cards are allocated to is not defined.
+
+        Arguments:
+        my_cards: a list of the 6 cards given to us at round start
+        '''
+        ranks = {}
+
+        for card in my_cards:
+            card_rank = card[0] #2 - 9, T, J, Q, K, A
+            card_suit = card[1] # d, h, s, c
+
+            if card_rank in ranks: #if we've seen this rank before, add the card to our list
+                ranks[card_rank].append(card)
+
+            else: #make a new list if we've never seen this one before
+                ranks[card_rank] = [card]
+
+        
+        pairs = [] #keep track of all of the pairs we identified
+        singles = [] #all other cards
+
+        for rank in ranks:
+            cards = ranks[rank]
+
+            if len(cards) == 1: #single card, can't be in a pair
+                singles.append(cards[0])
+            
+            elif len(cards) == 2 or len(cards) == 4: #a single pair or two pairs can be made here, add them all
+                pairs += cards
+            
+            else: #len(cards) == 3  A single pair plus an extra can be made here
+                pairs.append(cards[0])
+                pairs.append(cards[1])
+                singles.append(cards[2])
+
+        if len(pairs) > 0: #we found a pair! update our state to say that this is a strong round
+            self.strong_hole = True
+
+        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
+        values = dict(zip('23456789TJQKA', range(2, 15)))
+        # high ranks better
+        pairs.sort(key=lambda x: values[x[0]])
+        singles.sort(key=lambda x: values[x[0]])
+        
+        allocation = singles + pairs # put best cards on best board (best cards last)
+
+        for i in range(NUM_BOARDS): #subsequent pairs of cards should be pocket pairs if we found any
+            cards = [allocation[2*i], allocation[2*i + 1]]
+            self.board_allocations[i] = cards #record our allocations
+
+        self.board_allocations.sort(key=lambda x: self.calculate_strength(x, [], 100))
+
+        pass
+
+    def calculate_strength(self, hole_cards, community_cards, iters):
+        '''
+        A Monte Carlo method meant to estimate the win probability of a pair of 
+        hole cards. Simlulates 'iters' games and determines the win rates of our cards
+
+        Arguments:
+        hole: a list of our two hole cards
+        iters: a integer that determines how many Monte Carlo samples to take
+        '''
+
+        start_sampling_time = time.time()
+
+        deck = eval7.Deck() #eval7 object!
+        hole_cards = [eval7.Card(card) for card in hole_cards] #card objects, used to evaliate hands
+        community_cards = [eval7.Card(card) for card in community_cards]  # card objects, used to evaliate hands
+
+        for card in hole_cards: #remove cards that we know about! they shouldn't come up in simulations
+            deck.cards.remove(card)
+
+        for card in community_cards: #remove cards that we know about! they shouldn't come up in simulations
+            deck.cards.remove(card)
+
+        score = 0
+
+        for _ in range(iters): #take 'iters' samples
+            deck.shuffle() #make sure our samples are random
+
+            _COMM = 5 - len(community_cards) #the number of cards we need to draw
+            _OPP = 2
+
+            draw = deck.peek(_COMM + _OPP)
+
+            opp_hole = draw[: _OPP]
+            hidden_community = draw[_OPP: ]
+
+            our_hand = hole_cards + community_cards + hidden_community #the two showdown hands
+            opp_hand = opp_hole + community_cards + hidden_community
+
+            our_hand_value = eval7.evaluate(our_hand) #the ranks of our hands (only useful for comparisons)
+            opp_hand_value = eval7.evaluate(opp_hand)
+
+            if our_hand_value > opp_hand_value: #we win!
+                score += 2
+            
+            elif our_hand_value == opp_hand_value: #we tie.
+                score += 1
+            
+            else: #we lost....
+                score += 0
+        
+        hand_strength = score / (2 * iters) #this is our win probability!
+
+        sampling_duration = time.time() - start_sampling_time
+
+        self.sampling_duration_total += sampling_duration
+
+        # print("sampling duration", sampling_duration)
+
+        return hand_strength
+
+    def handle_new_round(self, game_state, round_state, active):
+        '''
+        Called when a new round starts. Called NUM_ROUNDS times.
+
+        Arguments:
+        game_state: the GameState object.
+        round_state: the RoundState object.
+        active: your player's index.
+
+        Returns:
+        Nothing.
+        '''
+        my_bankroll = game_state.bankroll  # the total number of chips you've gained or lost from the beginning of the game to the start of this round
+        opp_bankroll = game_state.opp_bankroll # ^but for your opponent
+        game_clock = game_state.game_clock  # the total number of seconds your bot has left to play this game
+        round_num = game_state.round_num  # the round number from 1 to NUM_ROUNDS
+        my_cards = round_state.hands[active]  # your six cards at the start of the round
+        big_blind = bool(active)  # True if you are the big blind
+
+        _MONTE_CARLO_ITERS = 100 #the number of monte carlo samples we will use
+        
+        self.allocate_cards(my_cards) #our old allocation strategy
+
+        for i in range(NUM_BOARDS): #calculate strengths for each hole pair
+            hole = self.board_allocations[i]
+            strength = self.calculate_strength(hole, [], _MONTE_CARLO_ITERS)
+            self.hole_strengths[i] = strength
+
+    def handle_round_over(self, game_state, terminal_state, active):
+        '''
+        Called when a round ends. Called NUM_ROUNDS times.
+
+        Arguments:
+        game_state: the GameState object.
+        terminal_state: the TerminalState object.
+        active: your player's index.
+
+        Returns:
+        Nothing.
+        '''
+        my_delta = terminal_state.deltas[active]  # your bankroll change from this round
+        opp_delta = terminal_state.deltas[1-active] # your opponent's bankroll change from this round 
+        previous_state = terminal_state.previous_state  # RoundState before payoffs
+        street = previous_state.street  # 0, 3, 4, or 5 representing when this round ended
+        for terminal_board_state in previous_state.board_states:
+            previous_board_state = terminal_board_state.previous_state
+            my_cards = previous_board_state.hands[active]  # your cards
+            opp_cards = previous_board_state.hands[1-active]  # opponent's cards or [] if not revealed
+        
+        self.board_allocations = [[], [], []] #reset our variables at the end of every round!
+        self.hole_strengths = [0, 0, 0]
+
+        game_clock = game_state.game_clock #check how much time we have remaining at the end of a game
+        round_num = game_state.round_num #Monte Carlo takes a lot of time, we use this to adjust!
+
+        print("round over")
+        print()
+
+        if round_num == NUM_ROUNDS:
+            print(game_clock)
+            print("total sampling duration", self.sampling_duration_total)
+        
+
+    def get_actions(self, game_state, round_state, active):
+        '''
+        Where the magic happens - your code should implement this function.
+        Called any time the engine needs a triplet of actions from your bot.
+
+        Arguments:
+        game_state: the GameState object.
+        round_state: the RoundState object.
+        active: your player's index.
+
+        Returns:
+        Your actions.
+        '''
+        legal_actions = round_state.legal_actions()  # the actions you are allowed to take
+        street = round_state.street  # 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
+        my_cards = round_state.hands[active]  # your cards across all boards
+        board_cards = [board_state.deck if isinstance(board_state, BoardState) else board_state.previous_state.deck for board_state in round_state.board_states] #the board cards
+        my_pips = [board_state.pips[active] if isinstance(board_state, BoardState) else 0 for board_state in round_state.board_states] # the number of chips you have contributed to the pot on each board this round of betting
+        opp_pips = [board_state.pips[1-active] if isinstance(board_state, BoardState) else 0 for board_state in round_state.board_states] # the number of chips your opponent has contributed to the pot on each board this round of betting
+        continue_cost = [opp_pips[i] - my_pips[i] for i in range(NUM_BOARDS)] #the number of chips needed to stay in each board's pot
+        my_stack = round_state.stacks[active]  # the number of chips you have remaining
+        opp_stack = round_state.stacks[1-active]  # the number of chips your opponent has remaining
+        stacks = [my_stack, opp_stack]
+        net_upper_raise_bound = round_state.raise_bounds()[1] # max raise across 3 boards
+        net_cost = 0 # keep track of the net additional amount you are spending across boards this round
+
+        my_actions = [None] * NUM_BOARDS
+        for i in range(NUM_BOARDS):
+            hole_cards = self.board_allocations[i]
+
+            if AssignAction in legal_actions[i]:
+                my_actions[i] = AssignAction(hole_cards) #add to our actions
+
+            elif isinstance(round_state.board_states[i], TerminalState): #make sure the game isn't over at this board
+                my_actions[i] = CheckAction() #check if it is
+
+            # round of active play
+            else: #do we add more resources?
+                board_cont_cost = continue_cost[i] #we need to pay this to keep playing
+                board_total = round_state.board_states[i].pot #amount before we started betting
+                print("board total is", board_total, "at board", i)
+                pot_total = my_pips[i] + opp_pips[i] + board_total #total money in the pot right now
+                min_raise, max_raise = round_state.board_states[i].raise_bounds(active, round_state.stacks)
+                # strength = self.hole_strengths[i]
+                visible_community_cards = [card for card in board_cards[i] if card]
+
+                # given the cards we see so far, what percentage of the time do we win? (based on 100 samples)
+                strength = self.calculate_strength(self.board_allocations[i], visible_community_cards, 100)
+
+                # the most we are willing to pay to continue
+                max_bcc = (strength * pot_total) / (1 - strength)
+
+                a = 1
+
+                # a can be a function instead of constant, think of non-linear ideas?
+                # no need to consider street separately to determine raise amount, higher confidence in later
+                #   street will be reflected by strength, therefore use strength as the raise parameter
+                # if strength is 0 this devolves to a call
+                raise_amount = int(my_pips[i] + board_cont_cost + a * strength * (pot_total + board_cont_cost))
+
+                # cap raise but don't force a higher raise with our reorganized logic
+                # since we want this to really be raise/call/check depending on strength
+                raise_amount = min([max_raise, raise_amount])
+
+                raise_cost = raise_amount - my_pips[i] #how much it costs to make that raise
+
+                if raise_amount >= min_raise:
+                    if RaiseAction in legal_actions[i] and (raise_cost <= my_stack - net_cost): #raise if we can and if we can afford it
+                        commit_action = RaiseAction(raise_amount)
+                        commit_cost = raise_cost
+
+                    elif RaiseAction in legal_actions[i] and (min_raise <= my_stack - net_cost):
+                        commit_action = RaiseAction(min_raise)
+                        commit_cost = min_raise
+                    elif CallAction in legal_actions[i]:
+                        commit_action = CallAction()
+                        commit_cost = board_cont_cost  # the cost to call is board_cont_cost
+                    else:  # checking is our only valid move here
+                        commit_action = CheckAction()
+                        commit_cost = 0
+                
+                elif CallAction in legal_actions[i]: 
+                    commit_action = CallAction()
+                    commit_cost = board_cont_cost #the cost to call is board_cont_cost
+                
+                else: #checking is our only valid move here
+                    commit_action = CheckAction()
+                    commit_cost = 0
+
+                # opponent raised - call, raise, or fold?
+                if board_cont_cost > 0:
+
+                    # if board_cont_cost > 5: #<--- parameters to tweak.
+                    #     _INTIMIDATION = 0.15
+                    #     strength = max([0, strength - _INTIMIDATION]) #if our opp raises a lot, be cautious!
+
+                    # costs more than we are willing to continue, fold
+                    if board_cont_cost > max_bcc:
+                        my_actions[i] = FoldAction()
+                        net_cost += 0
+                    elif board_cont_cost < max_bcc:
+                        my_actions[i] = RaiseAction(my_pips[i] + max_bcc)
+
+                    pot_odds = board_cont_cost / (pot_total + board_cont_cost)
+
+                    if strength >= pot_odds: #Positive Expected Value!! at least call!!
+
+                        # this will function as either a call or a raise, the amount of which already takes
+                        #   into account strength
+                        my_actions[i] = commit_action
+                        net_cost += commit_cost
+                    
+                    else: #Negative Expected Value!!! FOLD!!!
+                        my_actions[i] = FoldAction()
+                        net_cost += 0
+                
+                else: #board_cont_cost == 0, we control the action
+
+                    # hmm..?
+                    if strength < 0.5: #just check otherwise
+                        my_actions[i] = CheckAction()
+                        net_cost += 0
+
+                    # how much/if to raise already takes into account strength?
+                    # same case as above really, except the call determination doesn't need to be made
+                    # can the logic be any different?
+                    # wait nvm? need to think this through
+                    else:
+                        my_actions[i] = commit_action
+                        net_cost += commit_cost
+
+
+
+
+        return my_actions
+
+
+if __name__ == '__main__':
+    run_bot(Player(), parse_args())

@@ -70,7 +70,7 @@ class Player(Bot):
         cards_left = my_cards[:]
         good_holes = []
         while True:
-            if cards_left == 0:
+            if len(cards_left) == 0:
                 break
 
             min_tier = len(tier_to_hands) + 1

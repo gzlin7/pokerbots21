@@ -47,6 +47,9 @@ class Player(Bot):
         # convert to a dictionary, O(1) lookup time!
         self.starting_strengths = dict(zip(holes, strengths))
 
+        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
+        self.values = dict(zip('23456789TJQKA', range(2, 15)))
+
     # Disable
 
     def blockPrint(self):
@@ -56,7 +59,8 @@ class Player(Bot):
     def enablePrint(self):
         sys.stdout = sys.__stdout__
 
-    def hole_list_to_key(self, hole):
+    # EVs https://www.tightpoker.com/poker_hands.html
+    def hole_to_key(self, hole):
         '''
         Converts a hole card list into a key that we can use to query our 
         strength dictionary
@@ -69,16 +73,16 @@ class Player(Bot):
         rank_1, suit_1 = card_1[0], card_1[1]  # card info
         rank_2, suit_2 = card_2[0], card_2[1]
 
-        numeric_1, numeric_2 = self.rank_to_numeric(
-            rank_1), self.rank_to_numeric(rank_2)  # make numeric
+        numeric_1, numeric_2 = rank_1, rank_2  # make numeric
 
         suited = suit_1 == suit_2  # off-suit or not
         suit_string = ' s' if suited else ''
 
-        if numeric_1 >= numeric_2:  # keep our hole cards in rank order
-            return rank_1 + rank_2 + suit_string
-        else:
-            return rank_2 + rank_1 + suit_string
+        return rank_1 + rank_2 + suit_string
+
+    def get_ev(self, hole):
+        hole_key = self.hole_to_key(hole)
+        return self.starting_strengths[hole_key]
 
     def allocate_cards(self, my_cards):
         '''
@@ -127,14 +131,38 @@ class Player(Bot):
         if len(pairs) > 0:  # we found a pair! update our state to say that this is a strong round
             self.strong_hole = True
 
-        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
-        values = dict(zip('23456789TJQKA', range(2, 15)))
-        # high ranks better
-        pairs.sort(key=lambda x: values[x[0]])
-        singles.sort(key=lambda x: values[x[0]])
+        # # high ranks better
+        # pairs.sort(key=lambda x: values[x[0]])
+        # singles.sort(key=lambda x: values[x[0]])
+
+        # build good holes greedily based on EV
+        cards_left = my_cards[:]
+        good_holes = []
+        while True:
+            if len(cards_left) < 2:
+                break
+
+            best_ev = -100
+            best_hand = []
+            for i in range(len(cards_left) - 1):
+                for j in range(i+1, len(cards_left)):
+                    hand = [cards_left[i], cards_left[j]]
+                    # sort hands by rank (highest first)
+                    hand.sort(key=lambda x: self.values[x[0]], reverse=True)
+                    ev = self.get_ev(hand)
+                    if ev > best_ev:
+                        best_hand = hand
+                        best_ev = ev
+
+            print("Best Hand " + str(best_hand) + "\n ev " + str(best_ev))
+            good_holes.extend(best_hand)
+            cards_left.remove(best_hand[0])
+            cards_left.remove(best_hand[1])
 
         # put best cards on best board (best cards last)
-        allocation = singles + pairs
+        good_holes.reverse()
+        allocation = good_holes
+        print("Allocation " + str(allocation))
 
         # subsequent pairs of cards should be pocket pairs if we found any
         for i in range(NUM_BOARDS):

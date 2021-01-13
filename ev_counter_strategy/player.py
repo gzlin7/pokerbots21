@@ -10,6 +10,9 @@ from skeleton.runner import parse_args, run_bot
 import eval7
 import random
 import time
+import pandas as pd
+import itertools
+
 
 import sys
 import os
@@ -35,8 +38,20 @@ class Player(Bot):
         # better representation of our hole strengths (win probability!)
         self.hole_strengths = [0, 0, 0]
         self.sampling_duration_total = 0
-        self.blockPrint()
+        self.raise_count = [0, 0, 0]
+        self.enablePrint()
         # random.seed(10)
+
+        # make sure this df isn't too big!! Loading data all at once might be slow if you did more computations!
+        # the values we computed offline, this df is slow to search through though
+        calculated_df = pd.read_csv('hole_evs.csv')
+        holes = calculated_df.Holes  # the columns of our spreadsheet
+        strengths = calculated_df.EVs
+        # convert to a dictionary, O(1) lookup time!
+        self.starting_strengths = dict(zip(holes, strengths))
+
+        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
+        self.values = dict(zip('23456789TJQKA', range(2, 15)))
 
     # Disable
 
@@ -46,6 +61,45 @@ class Player(Bot):
     # Restore
     def enablePrint(self):
         sys.stdout = sys.__stdout__
+
+    # EVs https://www.tightpoker.com/poker_hands.html
+    def hole_to_key(self, hole):
+        '''
+        Converts a hole card list into a key that we can use to query our
+        strength dictionary
+
+        hole: list - A list of two card strings in the engine's format (Kd, As, Th, 7d, etc.)
+        '''
+        card_1 = hole[0]  # get all of our relevant info
+        card_2 = hole[1]
+
+        rank_1, suit_1 = card_1[0], card_1[1]  # card info
+        rank_2, suit_2 = card_2[0], card_2[1]
+
+        numeric_1, numeric_2 = rank_1, rank_2  # make numeric
+
+        suited = suit_1 == suit_2  # off-suit or not
+        suit_string = ' s' if suited else ''
+
+        return rank_1 + rank_2 + suit_string
+
+    def get_ev(self, hole):
+        hole_key = self.hole_to_key(hole)
+        return self.starting_strengths[hole_key]
+
+    # def get_best_hole(self, my_cards):
+    #     best_hand = []
+    #     best_ev = -100
+    #     for i in range(len(my_cards) - 1):
+    #         for j in range(i+1, len(my_cards)):
+    #             hand = [my_cards[i], my_cards[j]]
+    #             # sort hands by rank (highest first)
+    #             hand.sort(key=lambda x: self.values[x[0]], reverse=True)
+    #             ev = self.get_ev(hand)
+    #             if ev > best_ev:
+    #                 best_hand = hand
+    #                 best_ev = ev
+    #     return best_hand, ev
 
     def allocate_cards(self, my_cards):
         '''
@@ -61,51 +115,52 @@ class Player(Bot):
         print("Allocating cards")
         print()
 
-        ranks = {}
+        # build good holes greedily based on EV
+        best_sum_ev = -100
+        best_holes = []
+        best_evs = []
 
-        for card in my_cards:
-            card_rank = card[0]  # 2 - 9, T, J, Q, K, A
-            card_suit = card[1]  # d, h, s, c
+        # optimize sum of first two EVs
+        all_hands = list(itertools.combinations(my_cards, 2))
 
-            if card_rank in ranks:  # if we've seen this rank before, add the card to our list
-                ranks[card_rank].append(card)
+        for first_hand in all_hands:
+            first_ev = self.get_ev(sorted(first_hand,
+                                          key=lambda x: self.values[x[0]], reverse=True))
+            hands_remaining = [hand for hand in all_hands if not (first_hand[0]
+                                                                  in hand or first_hand[1] in hand)]
 
-            else:  # make a new list if we've never seen this one before
-                ranks[card_rank] = [card]
+            for second_hand in hands_remaining:
+                second_ev = self.get_ev(sorted(second_hand,
+                                               key=lambda x: self.values[x[0]], reverse=True))
+                total_ev = first_ev + second_ev
+                if total_ev > best_sum_ev:
+                    best_holes = [first_hand, second_hand]
+                    best_evs = [first_ev, second_ev]
+                    if first_ev < second_ev:
+                        best_holes.reverse()
+                        best_evs.reverse()
+                    best_sum_ev = total_ev
 
-        pairs = []  # keep track of all of the pairs we identified
-        singles = []  # all other cards
-
-        for rank in ranks:
-            cards = ranks[rank]
-
-            if len(cards) == 1:  # single card, can't be in a pair
-                singles.append(cards[0])
-
-            # a single pair or two pairs can be made here, add them all
-            elif len(cards) == 2 or len(cards) == 4:
-                pairs += cards
-
-            else:  # len(cards) == 3  A single pair plus an extra can be made here
-                pairs.append(cards[0])
-                pairs.append(cards[1])
-                singles.append(cards[2])
-
-        if len(pairs) > 0:  # we found a pair! update our state to say that this is a strong round
-            self.strong_hole = True
-
-        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
-        values = dict(zip('23456789TJQKA', range(2, 15)))
-        # high ranks better
-        pairs.sort(key=lambda x: values[x[0]])
-        singles.sort(key=lambda x: values[x[0]])
+        # calculate third EV
+        third_hand = [c for c in my_cards if not(
+            c in best_holes[0] or c in best_holes[1])]
+        third_ev = self.get_ev(sorted(third_hand,
+                                      key=lambda x: self.values[x[0]], reverse=True))
+        best_evs.append(third_ev)
+        best_evs.reverse()
+        print("Hole EVs: " + str(best_evs))
+        print()
 
         # put best cards on best board (best cards last)
-        allocation = singles + pairs
+        best_holes.append(third_hand)
+        best_holes.reverse()
+        allocation = best_holes
+        print("Allocation: " + str(allocation))
+        print()
 
         # subsequent pairs of cards should be pocket pairs if we found any
         for i in range(NUM_BOARDS):
-            cards = [allocation[2*i], allocation[2*i + 1]]
+            cards = list(allocation[i])
             self.board_allocations[i] = cards  # record our allocations
 
         self.board_allocations.sort(
@@ -134,7 +189,7 @@ class Player(Bot):
 
     def calculate_strength(self, hole_cards, community_cards, iters):
         '''
-        A Monte Carlo method meant to estimate the win probability of a pair of 
+        A Monte Carlo method meant to estimate the win probability of a pair of
         hole cards. Simlulates 'iters' games and determines the win rates of our cards
 
         Arguments:
@@ -288,6 +343,7 @@ class Player(Bot):
         # reset our variables at the end of every round!
         self.board_allocations = [[], [], []]
         self.hole_strengths = [0, 0, 0]
+        self.raise_count = [0, 0, 0]
 
         # check how much time we have remaining at the end of a game
         game_clock = game_state.game_clock
@@ -344,7 +400,7 @@ class Player(Bot):
         strengths = [self.calculate_strength(self.board_allocations[i], [
                                              card for card in board_cards[i] if card], 100) for i in range(NUM_BOARDS)]
         order = [i[0]
-                 for i in sorted(enumerate(strengths), key=lambda x:-x[1])]
+                 for i in sorted(enumerate(strengths), key=lambda x: -x[1])]
         for i in order:
             print("Currently solving board", i+1)
             if isinstance(round_state.board_states[i], TerminalState):
@@ -446,6 +502,7 @@ class Player(Bot):
                 print()
 
                 if board_cont_cost > 0:  # our opp raised!!! we must respond
+                    self.raise_count[i] += 1
                     print(
                         "Opponent has raised. We must respond. Continue cost is", board_cont_cost)
                     # if board_cont_cost > 5: #<--- parameters to tweak.
@@ -469,7 +526,7 @@ class Player(Bot):
                             net_cost += commit_cost
                             continue
 
-                        if strength < 0.8 and street >= 3:
+                        if (strength < 0.8 and street >= 3) or self.raise_count[i] > 2:
                             if FoldAction in legal_actions[i]:
                                 my_actions[i] = FoldAction()
                                 continue

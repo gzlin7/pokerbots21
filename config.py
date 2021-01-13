@@ -4,7 +4,7 @@ PLAYER_1_NAME = 'Hero'
 PLAYER_1_PATH = './calmer_raises'
 # NO TRAILING SLASHES ARE ALLOWED IN PATHS
 PLAYER_2_NAME = 'Villain'
-PLAYER_2_PATH = './calmer_raises_precompute'
+PLAYER_2_PATH = './ev_positive'
 # GAME PROGRESS IS RECORDED HERE
 GAME_LOG_FILENAME = 'gamelog'
 # PLAYER_LOG_SIZE_LIMIT IS IN BYTES

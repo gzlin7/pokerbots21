@@ -24,35 +24,45 @@ rounds_data = []
 me = "Hero"
 opp = "Villain"
 
+def parse_board_idx(line):
+	return int(line[line.index("board") + 6]) - 1
+
+def parse_hand(line):
+	return line[line.index("["):line.index("]") + 1]
+
 i = 0
 while i < len(loglines):
 	line = loglines[i]
 	if line.startswith("Round #"):
-		num = [int(s[1:len(s)-1]) for s in line.split() if s.startswith('#')]
-		round = Round(num[0])
+		num = line.split()[1]
+		num = int(num[1:len(num)-1])
+		round = Round(num)
 		while "awarded" not in line:
 			i += 1
 			line = loglines[i]
 
 			if "River" in line or "Flop" in line or "Turn" in line:
-				street = line[line.index("["):line.index("]")+1]
-				board = int(line[line.index("board") + 6]) - 1
+				street = parse_hand(line)
+				board = parse_board_idx(line)
 				round.streets[board] = street
 
 			if "folds" in line:
-				board = int(line[line.index("board") + 6]) - 1
+				board = parse_board_idx(line)
 				round.outcome[board] = line[:line.index("folds")] + "folds"
 
-			if "shows" in line:
-				hand = line[line.index("["):line.index("]") + 1]
-				board = int(line[line.index("board") + 6]) - 1
+			if "assigns" in line:
+				hand = parse_hand(line)
+				board = parse_board_idx(line)
 				if line.split()[0] == me:
 					round.my_holes[board] = hand
 				else:
 					round.opp_holes[board] = hand
 
-		rounds_data.append(round)
-		
-	i += 1
+			# if "shows" in line:
+			# 	# eval7 to determine winner
+			# 	# add to outcomes
 
+		rounds_data.append(round)
+
+	i += 1
 

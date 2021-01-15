@@ -31,7 +31,8 @@ class Player(Bot):
         self.board_allocations = [[], [], []] #keep track of our allocations at round start
         self.hole_strengths = [0, 0, 0] #better representation of our hole strengths (win probability!)
         self.sampling_duration_total = 0
-        self.RANDOMIZATION_ON = False  # whether to randomize ordering of holes to avoid deterministic exploitation
+        self.MONTE_CARLO_ITERS = 100  # the number of monte carlo samples we will use
+        self.RANDOMIZATION_ON = False # whether to randomize ordering of holes to avoid deterministic exploitation
         self.blockPrint()
         # random.seed(10)
 
@@ -46,6 +47,24 @@ class Player(Bot):
     def enablePrint(self):
         sys.stdout = sys.__stdout__
 
+    def rank_to_numeric(self, rank):
+
+        if rank.isnumeric(): #2-9
+            return int(rank)
+        elif rank == 'T': #10 is T, so we need to specify it here
+            return 10
+        elif rank == 'J': #Face cards for the rest of them
+            return 11
+        elif rank == 'Q':
+            return 12
+        elif rank == 'K':
+            return 13
+        else: #Ace (A) is the only one left
+            return 14
+
+    def sort_cards_by_rank(self, cards):
+        return sorted(cards, reverse=True, key=lambda x: self.rank_to_numeric(x[0])) #we want it in descending order
+
     def allocate_cards(self, my_cards):
         '''
         Method that allocates our cards at the beginning of a round. Method
@@ -56,67 +75,134 @@ class Player(Bot):
         Arguments:
         my_cards: a list of the 6 cards given to us at round start
         '''
-
-        print("Allocating cards")
-        print()
-
         ranks = {}
 
         for card in my_cards:
-            card_rank = card[0] #2 - 9, T, J, Q, K, A
-            card_suit = card[1] # d, h, s, c
+            card_rank = card[0]  # 2 - 9, T, J, Q, K, A
+            card_suit = card[1]  # d, h, s, c
 
-            if card_rank in ranks: #if we've seen this rank before, add the card to our list
+            if card_rank in ranks:  # if we've seen this rank before, add the card to our list
                 ranks[card_rank].append(card)
 
-            else: #make a new list if we've never seen this one before
+            else:  # make a new list if we've never seen this one before
                 ranks[card_rank] = [card]
 
-        
-        pairs = [] #keep track of all of the pairs we identified
-        singles = [] #all other cards
+        pairs = []  # keep track of all of the pairs we identified
+        singles = []  # all other cards
 
         for rank in ranks:
             cards = ranks[rank]
 
-            if len(cards) == 1: #single card, can't be in a pair
+            if len(cards) == 1:  # single card, can't be in a pair
                 singles.append(cards[0])
-            
-            elif len(cards) == 2 or len(cards) == 4: #a single pair or two pairs can be made here, add them all
+
+            elif len(cards) == 2 or len(cards) == 4:  # a single pair or two pairs can be made here, add them all
                 pairs += cards
-            
-            else: #len(cards) == 3  A single pair plus an extra can be made here
+
+            else:  # len(cards) == 3  A single pair plus an extra can be made here
                 pairs.append(cards[0])
                 pairs.append(cards[1])
                 singles.append(cards[2])
 
-        if len(pairs) > 0: #we found a pair! update our state to say that this is a strong round
-            self.strong_hole = True
+        cards_remaining = set(my_cards)  # keep track of the cards we need to allocate still
+        allocated_cards = set()  # the cards we've committed to the board
+        holes_allocated = []  # the holes we've made
 
-        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
-        values = dict(zip('23456789TJQKA', range(2, 15)))
-        # high ranks better
-        pairs.sort(key=lambda x: values[x[0]])
-        singles.sort(key=lambda x: values[x[0]])
-        
-        allocation = singles + pairs # put best cards on best board (best cards last)
+        _MIN_PAIR_VALUE = 5  # we only want pairs stronger than this!
 
-        for i in range(NUM_BOARDS): #subsequent pairs of cards should be pocket pairs if we found any
-            cards = [allocation[2*i], allocation[2*i + 1]]
-            self.board_allocations[i] = cards #record our allocations
+        for i in range(len(pairs) // 2):
+            pair = [pairs[2 * i], pairs[2 * i + 1]]  # get our pair
+            pair_rank = pair[0][0]
 
-        self.board_allocations.sort(key=lambda x: self.calculate_strength(x, [], 100))
+            if self.rank_to_numeric(pair_rank) >= _MIN_PAIR_VALUE:  # our pair is strong! keep it!
+                holes_allocated.append(pair)
+                allocated_cards.update(pair)
+
+        cards_remaining = cards_remaining - allocated_cards  # update our remaining cards
+
+        sorted_remaining = self.sort_cards_by_rank(list(cards_remaining))  # sort our remaining cards
+
+        for i in range(len(sorted_remaining) - 1):  # go through every adjecent card for straight draws!
+            card_1 = sorted_remaining[i]
+            card_2 = sorted_remaining[i + 1]
+
+            rank_diff = self.rank_to_numeric(card_1[0]) - self.rank_to_numeric(card_2[0])  # how far apart our ranks are
+
+            if (rank_diff <= 1) and (card_1 not in allocated_cards) and (
+                    card_2 not in allocated_cards):  # if they're close and unused
+                hole = [card_1, card_2]  # use them!
+                holes_allocated.append(hole)
+                allocated_cards.update(hole)
+
+        cards_remaining = cards_remaining - allocated_cards  # update our bookkeeping
+
+        suits = {}
+        for card in cards_remaining:  # look for flush draws
+            card_suit = card[1]
+
+            if card_suit in suits:
+                suits[card_suit].append(card)
+
+            else:
+                suits[card_suit] = [card]
+
+        for suit in suits:
+
+            cards = suits[suit]
+            if len(cards) == 2 or len(cards) == 3:  # we found something!
+                hole = [cards[0], cards[1]]
+                holes_allocated.append(hole)
+                allocated_cards.update(hole)
+
+            elif len(cards) == 4:  # be wary!!! this could be too many of the same suits
+                hole_1 = [cards[0], cards[1]]  # but we'll try anyway for now
+                hole_2 = [cards[2], cards[3]]
+
+                holes_allocated.append(hole_1)
+                allocated_cards.update(hole_1)
+
+                holes_allocated.append(hole_2)
+                allocated_cards.update(hole_2)
+
+        cards_remaining = cards_remaining - allocated_cards  # update cards remaining
+        extra_cards = list(cards_remaining)
+
+        for i in range(len(extra_cards) // 2):  # we couldnt do anything with these...oh well
+            hole = [extra_cards[2 * i], extra_cards[2 * i + 1]]  # just group them up randomly
+            holes_allocated.append(hole)
+            allocated_cards.update(hole)
+
+        cards_remaining = cards_remaining - allocated_cards  # final update
+
+        assert len(holes_allocated) == 3, 'we allocated too many cards!!'  # check for mistakes!!!
+        assert len(cards_remaining) == 0, "we didn't allocate enough!"
+
+        return holes_allocated  # return our decisions
+
+    def assign_holes(self, hole_cards):
+
+        holes_and_strengths = []  # keep track of holes and their strengths
+
+        for hole in hole_cards:
+            strength = self.calculate_strength(hole, [], self.MONTE_CARLO_ITERS)  # use our monte carlo sim!
+            holes_and_strengths.append((hole, strength))
+
+        holes_and_strengths = sorted(holes_and_strengths, key=lambda x: x[1])  # sort them by strength
 
         if self.RANDOMIZATION_ON:
             if random.random() < 0.15:  # swap strongest with second, makes our strategy non-deterministic!
-                temp = self.board_allocations[2]
-                self.board_allocations[2] = self.board_allocations[1]
-                self.board_allocations[1] = temp
+                temp = holes_and_strengths[2]
+                holes_and_strengths[2] = holes_and_strengths[1]
+                holes_and_strengths[1] = temp
 
             if random.random() < 0.15:  # swap second with last, makes us even more random
-                temp = self.board_allocations[1]
-                self.board_allocations[1] = self.board_allocations[0]
-                self.board_allocations[0] = temp
+                temp = holes_and_strengths[1]
+                holes_and_strengths[1] = holes_and_strengths[0]
+                holes_and_strengths[0] = temp
+
+        for i in range(NUM_BOARDS):  # we have our final board allocations!
+            self.board_allocations[i] = holes_and_strengths[i][0]
+            self.hole_strengths[i] = holes_and_strengths[i][1]
 
     def calculate_strength(self, hole_cards, community_cards, iters):
         '''
@@ -201,12 +287,8 @@ class Player(Bot):
 
         _MONTE_CARLO_ITERS = 100 #the number of monte carlo samples we will use
         
-        self.allocate_cards(my_cards) #our old allocation strategy
-
-        for i in range(NUM_BOARDS): #calculate strengths for each hole pair
-            hole = self.board_allocations[i]
-            strength = self.calculate_strength(hole, [], _MONTE_CARLO_ITERS)
-            self.hole_strengths[i] = strength
+        allocated_holes = self.allocate_cards(my_cards) #our allocation strategy
+        self.assign_holes(allocated_holes) #our randomized assignment method
 
     def handle_round_over(self, game_state, terminal_state, active):
         '''

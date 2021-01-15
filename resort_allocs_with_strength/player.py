@@ -31,6 +31,7 @@ class Player(Bot):
         self.board_allocations = [[], [], []] #keep track of our allocations at round start
         self.hole_strengths = [0, 0, 0] #better representation of our hole strengths (win probability!)
         self.sampling_duration_total = 0
+        self._MONTE_CARLO_ITERS = 100
         self.RANDOMIZATION_ON = False  # whether to randomize ordering of holes to avoid deterministic exploitation
         self.blockPrint()
         # random.seed(10)
@@ -198,14 +199,12 @@ class Player(Bot):
         round_num = game_state.round_num  # the round number from 1 to NUM_ROUNDS
         my_cards = round_state.hands[active]  # your six cards at the start of the round
         big_blind = bool(active)  # True if you are the big blind
-
-        _MONTE_CARLO_ITERS = 100 #the number of monte carlo samples we will use
         
         self.allocate_cards(my_cards) #our old allocation strategy
 
         for i in range(NUM_BOARDS): #calculate strengths for each hole pair
             hole = self.board_allocations[i]
-            strength = self.calculate_strength(hole, [], _MONTE_CARLO_ITERS)
+            strength = self.calculate_strength(hole, [], self._MONTE_CARLO_ITERS)
             self.hole_strengths[i] = strength
 
     def handle_round_over(self, game_state, terminal_state, active):
@@ -340,7 +339,7 @@ class Player(Bot):
                 print("Visible community cards are", [card for card in board_cards[i] if card])
                 print()
                 visible_community_cards = [card for card in board_cards[i] if card]
-                strength = self.calculate_strength(self.board_allocations[i], visible_community_cards, 100)
+                strength = self.calculate_strength(self.board_allocations[i], visible_community_cards, self._MONTE_CARLO_ITERS)
                 print("Calculated strength of hole cards and board is", strength)
                 print()
 

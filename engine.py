@@ -12,6 +12,7 @@ import socket
 import eval7
 import sys
 import os
+import random
 
 sys.path.append(os.getcwd())
 from config import *
@@ -31,6 +32,8 @@ PCARDS = lambda cards: '[{}]'.format(' '.join(map(str, cards)))
 PVALUE = lambda name, value: ', {} ({})'.format(name, value)
 STATUS = lambda players: ''.join([PVALUE(p.name, p.bankroll) for p in players])
 POTVAL = lambda value: ', ({})'.format(value)
+
+# random.seed(10)
 
 # Socket encoding scheme:
 #

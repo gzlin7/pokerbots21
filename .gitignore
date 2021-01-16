@@ -4,7 +4,7 @@ Villain.txt
 config.py
 A.txt
 B.txt
-gamelog.txt
+game_log.txt
 *.class
 .DS_Store
 .idea/

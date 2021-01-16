@@ -13,6 +13,19 @@ import time
 
 import sys, os
 
+class Game:
+    def __init__(self):
+        pass
+
+class Round:
+    def __init__(self):
+        self.current_street = 0
+        self.boards = {1: Board(), 2: Board(), 3: Board()}
+
+class Board:
+    def __init__(self):
+        self.strength_per_street = {0: None, 3: None, 4: None, 5: None}
+
 class Player(Bot):
     '''
     A pokerbot.
@@ -31,9 +44,14 @@ class Player(Bot):
         self.board_allocations = [[], [], []] #keep track of our allocations at round start
         self.hole_strengths = [0, 0, 0] #better representation of our hole strengths (win probability!)
         self.sampling_duration_total = 0
+        self.round = Round()
+
         self._MONTE_CARLO_ITERS = 100
         self.RANDOMIZATION_ON = False  # whether to randomize ordering of holes to avoid deterministic exploitation
-        self.blockPrint()
+
+        self.enablePrint()
+        # self.blockPrint()
+
         # random.seed(10)
 
 
@@ -106,6 +124,9 @@ class Player(Bot):
             cards = [allocation[2*i], allocation[2*i + 1]]
             self.board_allocations[i] = cards #record our allocations
 
+        print("Calculating strength")
+        print("Calculating strength")
+        print("Calculating strength")
         self.board_allocations.sort(key=lambda x: self.calculate_strength(x, [], 100))
 
         if self.RANDOMIZATION_ON:
@@ -202,10 +223,7 @@ class Player(Bot):
         
         self.allocate_cards(my_cards) #our old allocation strategy
 
-        for i in range(NUM_BOARDS): #calculate strengths for each hole pair
-            hole = self.board_allocations[i]
-            strength = self.calculate_strength(hole, [], self._MONTE_CARLO_ITERS)
-            self.hole_strengths[i] = strength
+        self.round = Round()
 
     def handle_round_over(self, game_state, terminal_state, active):
         '''
@@ -311,6 +329,12 @@ class Player(Bot):
         net_upper_raise_bound = round_state.raise_bounds()[1] # max raise across 3 boards
         net_cost = 0 # keep track of the net additional amount you are spending across boards this round
 
+        round = self.round
+        if street != round.current_street:
+            print("New street")
+            # do stuff on new betting round? setup?
+            round.current_street = street
+
         my_actions = [None] * NUM_BOARDS
         for i in range(NUM_BOARDS):
             print("~ Currently solving board", i+1, " ~")
@@ -321,8 +345,9 @@ class Player(Bot):
                 print("This board is settled, can only check.")
                 print("!!!!")
 
-            hole_cards = self.board_allocations[i]
+            board = round.boards[i+1]
 
+            hole_cards = self.board_allocations[i]
 
             if AssignAction in legal_actions[i]:
                 print("Assigning preferred hole cards")
@@ -339,7 +364,15 @@ class Player(Bot):
                 print("Visible community cards are", [card for card in board_cards[i] if card])
                 print()
                 visible_community_cards = [card for card in board_cards[i] if card]
-                strength = self.calculate_strength(self.board_allocations[i], visible_community_cards, self._MONTE_CARLO_ITERS)
+
+                if board.strength_per_street[round.current_street]:
+                    print("Avoided recalculating")
+                    strength = board.strength_per_street[round.current_street]
+                else:
+                    print("Calculating strength")
+                    strength = self.calculate_strength(self.board_allocations[i], visible_community_cards, self._MONTE_CARLO_ITERS)
+                    board.strength_per_street[round.current_street] = strength
+
                 print("Calculated strength of hole cards and board is", strength)
                 print()
 

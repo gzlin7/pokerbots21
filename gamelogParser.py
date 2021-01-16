@@ -180,6 +180,7 @@ while i < len(loglines):
 	i += 1
 
 num_rounds = len(rounds_data)
+streets = [0,3,4,5]
 
 # Win % and average winnings per board
 win_count = {1: 0, 2:0, 3:0}
@@ -190,54 +191,68 @@ win_total_B = {1: 0, 2:0, 3:0}
 total_folds_A, total_folds_B = {1: 0, 2:0, 3:0}, {1: 0, 2:0, 3:0}
 bad_folds_A, bad_folds_B = {1: 0, 2:0, 3:0}, {1: 0, 2:0, 3:0}
 
+# Overall per-game betting stats
+street_folds_A, street_folds_B = {0: 0, 3:0, 4:0, 5:0}, {0: 0, 3:0, 4:0, 5:0}
+
 # Showdown stats
 showdown_count = {1: 0, 2:0, 3:0}
 showdown_wins_A = {1: 0, 2:0, 3:0}
 
 for round_pkr in rounds_data:
 	for i in range(1,4):
-		a_won = round_pkr.boards[i].outcome["Winner"] == A
+		outcome = round_pkr.boards[i].outcome
+		a_won = outcome["Winner"] == A
 
 		# Win % and average winnings per board
 		if a_won:
 			win_count[i] += 1
-			win_total_A[i] += round_pkr.boards[i].outcome["Winnings"]
+			win_total_A[i] += outcome["Winnings"]
 		else:
-			win_total_B[i] += round_pkr.boards[i].outcome["Winnings"]
+			win_total_B[i] += outcome["Winnings"]
 
 		# Fold stats (who had stronger hand at time of fold?)
-		if round_pkr.boards[i].outcome["Method"] == "Fold":
+		if outcome["Method"] == "Fold":
 			if a_won:
 				total_folds_B[i] += 1
-				if not round_pkr.boards[i].outcome["A_better_hand"]:
+				if not outcome["A_better_hand"]:
 					bad_folds_B[i] += 1
+				street_folds_B[len(round_pkr.boards[i].community_cards)] += 1
 			else:
 				total_folds_A[i] += 1
-				if round_pkr.boards[i].outcome["A_better_hand"]:
+				if outcome["A_better_hand"]:
 					bad_folds_A[i] += 1
+				street_folds_A[len(round_pkr.boards[i].community_cards)] += 1
+
 
 		# Showdown stats
-		if round_pkr.boards[i].outcome["Method"] == "Showdown":
+		if outcome["Method"] == "Showdown":
 			showdown_count[i] += 1
 			if a_won:
 				showdown_wins_A[i] += 1
 
 for i in range(1,4):
-	print("====="+"BOARD "+ str(i) + "=====")
-	print("Win rate (A): " + str(win_count[i] / num_rounds))
-	print("Showdown Win rate (A): " + str(round(showdown_wins_A[i] / showdown_count[i],2)))
+	print("====="+"BOARD "+ str(i) + "STATS =====")
+	print("Win (A): " + str(win_count[i] / num_rounds))
+	print("Showdown Win: " + str(round(showdown_wins_A[i] / showdown_count[i],2)))
 	print()
-	print("Avg win amt (A) " + str(i) + ": " + str(win_total_A[i] / num_rounds))
-	print("Avg win amt (B) " + str(i) + ": " + str(win_total_B[i] / num_rounds))
+	print("Avg win amt (A): " + str(win_total_A[i] / num_rounds))
+	print("Avg win amt (B): " + str(win_total_B[i] / num_rounds))
 	print()
-	print("Fold rate (A) " + str(i) + ": " + str(total_folds_A[i] / num_rounds))
-	print("Bad Fold rate (A) " + str(i) + ": " + str(bad_folds_A[i] / total_folds_A[i]))
+	print("Fold rate (A): " + str(total_folds_A[i] / num_rounds))
+	print("Bad Fold (A): " + str(round(bad_folds_A[i] / total_folds_A[i], 2)))
 	print()
-	print("Fold rate (B) " + str(i) + ": " + str(total_folds_B[i] / num_rounds))
-	print("Bad Fold rate (B) " + str(i) + ": " + str(bad_folds_B[i] / total_folds_B[i]))
+	print("Fold (B): " + str(total_folds_B[i] / num_rounds))
+	print("Bad Fold (B): " + str(round(bad_folds_B[i] / total_folds_B[i], 2)))
 	print()
 
-
+print("=====PLAYER BETTING STATS=====")
+print("A Folds:")
+for street in [0,3,4,5]:
+	print("Street " + str(street) + ": " + str(street_folds_A[street]))
+print()
+print("B Folds:")
+for street in [0,3,4,5]:
+	print("Street " + str(street) + ": " + str(street_folds_B[street]))
 
 # for i in range(0, 10):
 # 	rounds_data_obj = rounds_data[i]

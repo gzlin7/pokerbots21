@@ -44,10 +44,12 @@ class Round:
 
 rounds_data = []
 
-def calculate_strength(hole_cards, community_cards, iters):
+def calculate_strength(hole_cards, community_cards, iters, opp_hole = None):
 	'''
     A Monte Carlo method meant to estimate the win probability of a pair of
     hole cards. Simlulates 'iters' games and determines the win rates of our cards
+
+    Modified to take in opponent hole as well if we know that information (ie. during gamelog parsing)
 
     Arguments:
     hole: a list of our two hole cards
@@ -55,8 +57,12 @@ def calculate_strength(hole_cards, community_cards, iters):
     '''
 
 	deck = eval7.Deck()  # eval7 object!
-	hole_cards = [eval7.Card(card) for card in hole_cards]  # card objects, used to evaliate hands
-	community_cards = [eval7.Card(card) for card in community_cards]  # card objects, used to evaliate hands
+	hole_cards = [eval7.Card(card) for card in hole_cards if card]  # card objects, used to evaliate hands
+	community_cards = [eval7.Card(card) for card in community_cards if card]  # card objects, used to evaliate hands
+	if opp_hole:
+		opp_hole = [eval7.Card(card) for card in opp_hole if card]
+		for card in opp_hole:
+			deck.cards.remove(card)
 
 	for card in hole_cards:  # remove cards that we know about! they shouldn't come up in simulations
 		deck.cards.remove(card)
@@ -70,11 +76,17 @@ def calculate_strength(hole_cards, community_cards, iters):
 		deck.shuffle()  # make sure our samples are random
 
 		_COMM = 5 - len(community_cards)  # the number of cards we need to draw
-		_OPP = 2
+
+		if not opp_hole:
+			_OPP = 2
+		else:
+			_OPP = 0
 
 		draw = deck.peek(_COMM + _OPP)
 
-		opp_hole = draw[: _OPP]
+		if not opp_hole:
+			opp_hole = draw[: _OPP]
+
 		hidden_community = draw[_OPP:]
 
 		our_hand = hole_cards + community_cards + hidden_community  # the two showdown hands
@@ -187,9 +199,9 @@ while i < len(loglines):
 				other_player = B if player == A else A
 				board = int(line_arr[-1])
 
-				a_strength = calculate_strength(round_pkr.boards[board].A_holes, round_pkr.boards[board].community_cards, _MONTE_CARLO_ITERS)
+				a_strength = calculate_strength(round_pkr.boards[board].A_holes, round_pkr.boards[board].community_cards, _MONTE_CARLO_ITERS, round_pkr.boards[board].B_holes)
 				b_strength = calculate_strength(round_pkr.boards[board].B_holes,
-												round_pkr.boards[board].community_cards, _MONTE_CARLO_ITERS)
+												round_pkr.boards[board].community_cards, _MONTE_CARLO_ITERS, round_pkr.boards[board].A_holes)
 				if a_strength > b_strength:
 					winner = A
 				elif b_strength > a_strength:

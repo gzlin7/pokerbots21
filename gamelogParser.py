@@ -130,8 +130,9 @@ while i < len(loglines):
 				player = line_arr[0]
 				other_player = B if player == A else A
 				board = int(line_arr[-1])
-				a_had_better = A == eval_hands(round_pkr.boards[board].A_holes, round_pkr.boards[board].B_holes,
+				winner, a_hand_desc, b_hand_desc = eval_hands(round_pkr.boards[board].A_holes, round_pkr.boards[board].B_holes,
 						   round_pkr.boards[board].community_cards)
+				a_had_better = (A == winner)
 
 				round_pkr.boards[board].outcome = {"Method": "Fold", "Winner": other_player, "A hand type": "not evaluated",
 											   "B hand type": "not evaluated", "Winnings": round_pkr.boards[board].pot, "A_better_hand": a_had_better}
@@ -242,15 +243,15 @@ for i in range(1,4):
 print("===== PLAYER BETTING =====")
 num_games = 3 * num_rounds
 print("A:")
-print("Fold rate: " + str(round(total_folds_A / num_games,2)))
-print("Bad Fold: " + str(round(bad_folds_A / total_folds_A, 2)))
+print("Fold rate: " + str(round(total_folds_A / num_games, 3)))
+print("Bad Fold: " + str(round(bad_folds_A / total_folds_A, 3)))
 print()
 for street in [0,3,4,5]:
 	print("Street " + str(street) + ": " + str(street_folds_A[street]))
 print()
 print("B:")
-print("Fold rate: " + str(round(total_folds_B / num_games,2)))
-print("Bad Fold: " + str(round(bad_folds_B / total_folds_B, 2)))
+print("Fold rate: " + str(round(total_folds_B / num_games, 3)))
+print("Bad Fold: " + str(round(bad_folds_B / total_folds_B, 3)))
 print()
 for street in [0,3,4,5]:
 	print("Street " + str(street) + ": " + str(street_folds_B[street]))

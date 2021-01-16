@@ -74,7 +74,7 @@ while i < len(loglines):
 		fold_winnings_B = 0
 		round_num = line.split()[1]
 		round_num = int(round_num[1:len(round_num)-1])
-		round = Round(round_num)
+		round_pkr = Round(round_num)
 		while "awarded" not in line:
 			i += 1
 			line = loglines[i]
@@ -84,98 +84,160 @@ while i < len(loglines):
 			if "River" in line or "Flop" in line or "Turn" in line:
 				community_cards = parse_hand(line)
 				board = int(line_arr[-1])
-				round.boards[board].community_cards = community_cards
+				round_pkr.boards[board].community_cards = community_cards
 				for board in range(1, 4):
-					round.boards[board].pips = {A: 0, B: 0}
+					round_pkr.boards[board].pips = {A: 0, B: 0}
 
 
 			if "posts" in line:
 				player = line_arr[0]
 				blind_amt = int(line_arr[5])
 				for board in range(1, 4):
-					round.boards[board].pips[player] += blind_amt
-					round.boards[board].pot += blind_amt
-					round.bankrolls[player] -= blind_amt
+					round_pkr.boards[board].pips[player] += blind_amt
+					round_pkr.boards[board].pot += blind_amt
+					round_pkr.bankrolls[player] -= blind_amt
 
 			if "calls" in line:
 				player = line_arr[0]
 				other_player = B if player == A else A
 				board = int(line_arr[-1])
-				continue_cost = round.boards[board].pips[other_player] - round.boards[board].pips[player]
+				continue_cost = round_pkr.boards[board].pips[other_player] - round_pkr.boards[board].pips[player]
 
-				round.boards[board].pips[player] += continue_cost
-				round.boards[board].pot += continue_cost
-				round.bankrolls[player] -= continue_cost
+				round_pkr.boards[board].pips[player] += continue_cost
+				round_pkr.boards[board].pot += continue_cost
+				round_pkr.bankrolls[player] -= continue_cost
 
 			if "raises" in line:
 				player = line_arr[0]
 				board = int(line_arr[-1])
 				raise_to = int(line_arr[3])
-				raise_cost = raise_to - round.boards[board].pips[player]
+				raise_cost = raise_to - round_pkr.boards[board].pips[player]
 
-				round.boards[board].pips[player] += raise_cost
-				round.boards[board].pot += raise_cost
-				round.bankrolls[player] -= raise_cost
+				round_pkr.boards[board].pips[player] += raise_cost
+				round_pkr.boards[board].pot += raise_cost
+				round_pkr.bankrolls[player] -= raise_cost
 
 			if "bets" in line:
 				player = line_arr[0]
 				board = int(line_arr[-1])
 				bet_amount = int(line_arr[2])
 
-				round.boards[board].pips[player] += bet_amount
-				round.boards[board].pot += bet_amount
-				round.bankrolls[player] -= bet_amount
+				round_pkr.boards[board].pips[player] += bet_amount
+				round_pkr.boards[board].pot += bet_amount
+				round_pkr.bankrolls[player] -= bet_amount
 
 			if "folds" in line:
 				player = line_arr[0]
 				other_player = B if player == A else A
 				board = int(line_arr[-1])
+				a_had_better = A == eval_hands(round_pkr.boards[board].A_holes, round_pkr.boards[board].B_holes,
+						   round_pkr.boards[board].community_cards)
 
-				round.boards[board].outcome = {"Method": "Fold", "Winner": other_player, "A hand type": "not evaluated",
-											   "B hand type": "not evaluated", "Winnings": round.boards[board].pot}
+				round_pkr.boards[board].outcome = {"Method": "Fold", "Winner": other_player, "A hand type": "not evaluated",
+											   "B hand type": "not evaluated", "Winnings": round_pkr.boards[board].pot, "A_better_hand": a_had_better}
 
 				if other_player == A:
-					fold_winnings_A += round.boards[board].pot
+					fold_winnings_A += round_pkr.boards[board].pot
 				else:
-					fold_winnings_B += round.boards[board].pot
+					fold_winnings_B += round_pkr.boards[board].pot
 
 			if "assigns" in line:
 				player = line_arr[0]
 				hand = parse_hand(line)
 				board = int(line_arr[-1])
 				if player == A:
-					round.boards[board].A_holes = hand
+					round_pkr.boards[board].A_holes = hand
 				else:
-					round.boards[board].B_holes = hand
+					round_pkr.boards[board].B_holes = hand
 
 
 			if "shows" in line:
 				board = int(line_arr[-1])
-				winner, a_hand_desc, b_hand_desc = eval_hands(round.boards[board].A_holes, round.boards[board].B_holes, round.boards[board].community_cards)
+				winner, a_hand_desc, b_hand_desc = eval_hands(round_pkr.boards[board].A_holes, round_pkr.boards[board].B_holes, round_pkr.boards[board].community_cards)
 
 				res = []
 				if winner == "TIE":
-					round.boards[board].outcome = {"Method": "Showdown", "Winner": winner, A + " hand type": a_hand_desc,
-											B + " hand type": b_hand_desc, "Winnings": round.boards[board].pot // 2} # not quite
-					round.bankrolls[A] += round.boards[board].pot // 2
-					round.bankrolls[B] += round.boards[board].pot // 2
+					round_pkr.boards[board].outcome = {"Method": "Showdown", "Winner": winner, A + " hand type": a_hand_desc,
+											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot // 2} # not quite
+					round_pkr.bankrolls[A] += round_pkr.boards[board].pot // 2
+					round_pkr.bankrolls[B] += round_pkr.boards[board].pot // 2
 				else:
-					round.boards[board].outcome = {"Method": "Showdown", "Winner": winner, A + " hand type": a_hand_desc,
-											B + " hand type": b_hand_desc, "Winnings": round.boards[board].pot}
-					round.bankrolls[winner] += round.boards[board].pot
+					round_pkr.boards[board].outcome = {"Method": "Showdown", "Winner": winner, A + " hand type": a_hand_desc,
+											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot}
+					round_pkr.bankrolls[winner] += round_pkr.boards[board].pot
 
 				# handled this showdown, skip next line - check that this doesn't break anything in the future, eg printing line by line
 				i += 1
 
 		if "awarded" in line:
-			round.bankrolls[A] += fold_winnings_A
-			round.bankrolls[B] += fold_winnings_B
-			round.deltas[A] = round.bankrolls[A] - 200
-			round.deltas[B] = round.bankrolls[B] - 200
+			round_pkr.bankrolls[A] += fold_winnings_A
+			round_pkr.bankrolls[B] += fold_winnings_B
+			round_pkr.deltas[A] = round_pkr.bankrolls[A] - 200
+			round_pkr.deltas[B] = round_pkr.bankrolls[B] - 200
 
-		rounds_data.append(round)
+		rounds_data.append(round_pkr)
 
 	i += 1
+
+num_rounds = len(rounds_data)
+
+# Win % and average winnings per board
+win_count = {1: 0, 2:0, 3:0}
+win_total_A = {1: 0, 2:0, 3:0}
+win_total_B = {1: 0, 2:0, 3:0}
+
+# Fold stats (who had stronger hand at time of fold?)
+total_folds_A, total_folds_B = {1: 0, 2:0, 3:0}, {1: 0, 2:0, 3:0}
+bad_folds_A, bad_folds_B = {1: 0, 2:0, 3:0}, {1: 0, 2:0, 3:0}
+
+# Showdown stats
+showdown_count = {1: 0, 2:0, 3:0}
+showdown_wins_A = {1: 0, 2:0, 3:0}
+
+for round_pkr in rounds_data:
+	for i in range(1,4):
+		a_won = round_pkr.boards[i].outcome["Winner"] == A
+
+		# Win % and average winnings per board
+		if a_won:
+			win_count[i] += 1
+			win_total_A[i] += round_pkr.boards[i].outcome["Winnings"]
+		else:
+			win_total_B[i] += round_pkr.boards[i].outcome["Winnings"]
+
+		# Fold stats (who had stronger hand at time of fold?)
+		if round_pkr.boards[i].outcome["Method"] == "Fold":
+			if a_won:
+				total_folds_B[i] += 1
+				if not round_pkr.boards[i].outcome["A_better_hand"]:
+					bad_folds_B[i] += 1
+			else:
+				total_folds_A[i] += 1
+				if round_pkr.boards[i].outcome["A_better_hand"]:
+					bad_folds_A[i] += 1
+
+		# Showdown stats
+		if round_pkr.boards[i].outcome["Method"] == "Showdown":
+			showdown_count[i] += 1
+			if a_won:
+				showdown_wins_A[i] += 1
+
+for i in range(1,4):
+	print("====="+"BOARD "+ str(i) + "=====")
+	print("Win rate (A): " + str(win_count[i] / num_rounds))
+	print("Showdown Win rate (A): " + str(round(showdown_wins_A[i] / showdown_count[i],2)))
+	print()
+	print("Avg win amt (A) " + str(i) + ": " + str(win_total_A[i] / num_rounds))
+	print("Avg win amt (B) " + str(i) + ": " + str(win_total_B[i] / num_rounds))
+	print()
+	print("Fold rate (A) " + str(i) + ": " + str(total_folds_A[i] / num_rounds))
+	print("Bad Fold rate (A) " + str(i) + ": " + str(bad_folds_A[i] / total_folds_A[i]))
+	print()
+	print("Fold rate (B) " + str(i) + ": " + str(total_folds_B[i] / num_rounds))
+	print("Bad Fold rate (B) " + str(i) + ": " + str(bad_folds_B[i] / total_folds_B[i]))
+	print()
+
+
 
 # for i in range(0, 10):
 # 	rounds_data_obj = rounds_data[i]

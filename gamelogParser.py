@@ -6,9 +6,9 @@ import re
 import eval7
 
 # assumes playing "A" vs "B"
-GAME_LOG_FILE = 'gamelog.txt'
-A = "Hero"
-B = "Villain"
+GAME_LOG_FILE = 'game_log.txt'
+A = "A"
+B = "B"
 
 f = open(GAME_LOG_FILE)
 loglines = f.readlines()
@@ -188,8 +188,8 @@ win_total_A = {1: 0, 2:0, 3:0}
 win_total_B = {1: 0, 2:0, 3:0}
 
 # Fold stats (who had stronger hand at time of fold?)
-total_folds_A, total_folds_B = {1: 0, 2:0, 3:0}, {1: 0, 2:0, 3:0}
-bad_folds_A, bad_folds_B = {1: 0, 2:0, 3:0}, {1: 0, 2:0, 3:0}
+total_folds_A, total_folds_B = 0,0
+bad_folds_A, bad_folds_B = 0,0
 
 # Overall per-game betting stats
 street_folds_A, street_folds_B = {0: 0, 3:0, 4:0, 5:0}, {0: 0, 3:0, 4:0, 5:0}
@@ -213,14 +213,14 @@ for round_pkr in rounds_data:
 		# Fold stats (who had stronger hand at time of fold?)
 		if outcome["Method"] == "Fold":
 			if a_won:
-				total_folds_B[i] += 1
+				total_folds_B += 1
 				if not outcome["A_better_hand"]:
-					bad_folds_B[i] += 1
+					bad_folds_B += 1
 				street_folds_B[len(round_pkr.boards[i].community_cards)] += 1
 			else:
-				total_folds_A[i] += 1
+				total_folds_A += 1
 				if outcome["A_better_hand"]:
-					bad_folds_A[i] += 1
+					bad_folds_A += 1
 				street_folds_A[len(round_pkr.boards[i].community_cards)] += 1
 
 
@@ -231,28 +231,30 @@ for round_pkr in rounds_data:
 				showdown_wins_A[i] += 1
 
 for i in range(1,4):
-	print("====="+"BOARD "+ str(i) + "STATS =====")
+	print("===== "+"BOARD "+ str(i) + " =====")
 	print("Win (A): " + str(win_count[i] / num_rounds))
 	print("Showdown Win: " + str(round(showdown_wins_A[i] / showdown_count[i],2)))
 	print()
 	print("Avg win amt (A): " + str(win_total_A[i] / num_rounds))
 	print("Avg win amt (B): " + str(win_total_B[i] / num_rounds))
 	print()
-	print("Fold rate (A): " + str(total_folds_A[i] / num_rounds))
-	print("Bad Fold (A): " + str(round(bad_folds_A[i] / total_folds_A[i], 2)))
-	print()
-	print("Fold (B): " + str(total_folds_B[i] / num_rounds))
-	print("Bad Fold (B): " + str(round(bad_folds_B[i] / total_folds_B[i], 2)))
-	print()
 
-print("=====PLAYER BETTING STATS=====")
-print("A Folds:")
+print("===== PLAYER BETTING =====")
+num_games = 3 * num_rounds
+print("A:")
+print("Fold rate: " + str(round(total_folds_A / num_games,2)))
+print("Bad Fold: " + str(round(bad_folds_A / total_folds_A, 2)))
+print()
 for street in [0,3,4,5]:
 	print("Street " + str(street) + ": " + str(street_folds_A[street]))
 print()
-print("B Folds:")
+print("B:")
+print("Fold rate: " + str(round(total_folds_B / num_games,2)))
+print("Bad Fold: " + str(round(bad_folds_B / total_folds_B, 2)))
+print()
 for street in [0,3,4,5]:
 	print("Street " + str(street) + ": " + str(street_folds_B[street]))
+print()
 
 # for i in range(0, 10):
 # 	rounds_data_obj = rounds_data[i]

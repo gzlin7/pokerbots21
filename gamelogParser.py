@@ -133,9 +133,10 @@ while i < len(loglines):
 				winner, a_hand_desc, b_hand_desc = eval_hands(round_pkr.boards[board].A_holes, round_pkr.boards[board].B_holes,
 						   round_pkr.boards[board].community_cards)
 				a_had_better = (A == winner)
+				tie = (winner == "TIE")
 
 				round_pkr.boards[board].outcome = {"Method": "Fold", "Winner": other_player, "A hand type": "not evaluated",
-											   "B hand type": "not evaluated", "Winnings": round_pkr.boards[board].pot, "A_better_hand": a_had_better}
+											   "B hand type": "not evaluated", "Winnings": round_pkr.boards[board].pot, "A_better_hand": a_had_better, "Tied Hands": tie}
 
 				if other_player == A:
 					fold_winnings_A += round_pkr.boards[board].pot
@@ -215,12 +216,12 @@ for round_pkr in rounds_data:
 		if outcome["Method"] == "Fold":
 			if a_won:
 				total_folds_B += 1
-				if not outcome["A_better_hand"]:
+				if (not outcome["A_better_hand"]) or outcome["Tied Hands"]:
 					bad_folds_B += 1
 				street_folds_B[len(round_pkr.boards[i].community_cards)] += 1
 			else:
 				total_folds_A += 1
-				if outcome["A_better_hand"]:
+				if outcome["A_better_hand"] or outcome["Tied Hands"]:
 					bad_folds_A += 1
 				street_folds_A[len(round_pkr.boards[i].community_cards)] += 1
 

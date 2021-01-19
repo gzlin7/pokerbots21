@@ -127,7 +127,7 @@ class Player(Bot):
         print("Calculating strength")
         print("Calculating strength")
         print("Calculating strength")
-        self.board_allocations.sort(key=lambda x: self.calculate_strength(x, [], 100))
+        self.board_allocations.sort(key=lambda x: self.calculate_strength(x, [], self._MONTE_CARLO_ITERS))
 
         if self.RANDOMIZATION_ON:
             if random.random() < 0.15:  # swap strongest with second, makes our strategy non-deterministic!

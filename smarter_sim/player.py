@@ -219,15 +219,18 @@ class Player(Bot):
         # avoid repeats
         opp_hands_to_try = set()
         score = 0
-        while len(opp_hands_to_try) < iters:
-            for hand in list(itertools.combinations(list(deck), 2)):
-                ev = self.get_ev(sorted([str(hand[0]), str(hand[1])],
-                                        key=lambda x: self.values[x[0]], reverse=True))
-                # TODO: better strength weighting
-                ev = min(1, ev + 0.2)
-                if random.random() < ev and hand not in opp_hands_to_try:
-                    opp_hands_to_try.add(hand)
-            break
+
+        for hand in list(itertools.combinations(list(deck), 2)):
+            ev = self.get_ev(sorted([str(hand[0]), str(hand[1])],
+                                    key=lambda x: self.values[x[0]], reverse=True))
+            # TODO: better strength weighting
+            ev = min(1, ev + 0.2)
+            if random.random() < ev and hand not in opp_hands_to_try:
+                opp_hands_to_try.add(hand)
+            if len(opp_hands_to_try) >= iters:
+                break
+
+
 
         for opp_hole in opp_hands_to_try:
             deck.shuffle()  # make sure our samples are random

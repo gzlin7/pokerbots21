@@ -23,6 +23,7 @@ class Round:
         self.boards = {1: Board(), 2: Board(), 3: Board()}
         self.eval_count = 0
         self.calculate_strength_called = 0
+        self.eval_hand_memo = {}
 
 class Board:
     def __init__(self):
@@ -188,9 +189,22 @@ class Player(Bot):
             our_hand = hole_cards + community_cards + hidden_community #the two showdown hands
             opp_hand = opp_hole + community_cards + hidden_community
 
-            our_hand_value = eval7.evaluate(our_hand) #the ranks of our hands (only useful for comparisons)
-            opp_hand_value = eval7.evaluate(opp_hand)
-            self.round.eval_count += 2
+            our_key = frozenset(our_hand)
+            opp_key = frozenset(opp_hand)
+
+            if our_key not in self.round.eval_hand_memo:
+                our_hand_value = eval7.evaluate(our_hand) #the ranks of our hands (only useful for comparisons)
+                self.round.eval_hand_memo[our_key] = our_hand_value
+                self.round.eval_count += 1
+            else:
+                our_hand_value = self.round.eval_hand_memo[our_key]
+
+            if opp_key not in self.round.eval_hand_memo:
+                opp_hand_value = eval7.evaluate(opp_hand)
+                self.round.eval_hand_memo[opp_key] = opp_hand_value
+                self.round.eval_count += 1
+            else:
+                opp_hand_value = self.round.eval_hand_memo[opp_key]
 
             if our_hand_value > opp_hand_value: #we win!
                 score += 2

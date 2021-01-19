@@ -21,6 +21,8 @@ class Round:
     def __init__(self):
         self.current_street = 0
         self.boards = {1: Board(), 2: Board(), 3: Board()}
+        self.eval_count = 0
+        self.calculate_strength_called = 0
 
 class Board:
     def __init__(self):
@@ -127,7 +129,14 @@ class Player(Bot):
         print("Calculating strength")
         print("Calculating strength")
         print("Calculating strength")
-        self.board_allocations.sort(key=lambda x: self.calculate_strength(x, [], self._MONTE_CARLO_ITERS))
+
+        board_strengths = {}
+
+        for i in range(1, 4):
+            self.round.boards[i].strength_per_street[0] = self.calculate_strength(self.board_allocations[i-1], [], self._MONTE_CARLO_ITERS)
+            board_strengths[str(self.board_allocations[i-1])] = self.round.boards[i].strength_per_street[0]
+
+        self.board_allocations.sort(key=lambda x: board_strengths[str(x)])
 
         if self.RANDOMIZATION_ON:
             if random.random() < 0.15:  # swap strongest with second, makes our strategy non-deterministic!
@@ -149,6 +158,7 @@ class Player(Bot):
         hole: a list of our two hole cards
         iters: a integer that determines how many Monte Carlo samples to take
         '''
+        self.round.calculate_strength_called += 1
 
         start_sampling_time = time.time()
 
@@ -180,6 +190,7 @@ class Player(Bot):
 
             our_hand_value = eval7.evaluate(our_hand) #the ranks of our hands (only useful for comparisons)
             opp_hand_value = eval7.evaluate(opp_hand)
+            self.round.eval_count += 2
 
             if our_hand_value > opp_hand_value: #we win!
                 score += 2
@@ -212,6 +223,8 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+        self.round = Round()
+
         print("New round!")
         print()
         my_bankroll = game_state.bankroll  # the total number of chips you've gained or lost from the beginning of the game to the start of this round
@@ -222,8 +235,6 @@ class Player(Bot):
         big_blind = bool(active)  # True if you are the big blind
         
         self.allocate_cards(my_cards) #our old allocation strategy
-
-        self.round = Round()
 
     def handle_round_over(self, game_state, terminal_state, active):
         '''
@@ -285,6 +296,8 @@ class Player(Bot):
             i += 1
 
         print("I win on this round total:", my_delta)
+        print("Eval called", self.round.eval_count)
+        print("calculate_strength called", self.round.calculate_strength_called)
         print()
         
         self.board_allocations = [[], [], []] #reset our variables at the end of every round!

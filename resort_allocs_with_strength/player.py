@@ -52,8 +52,8 @@ class Player(Bot):
         self._MONTE_CARLO_ITERS = 100
         self.RANDOMIZATION_ON = False  # whether to randomize ordering of holes to avoid deterministic exploitation
 
-        self.enablePrint()
-        # self.blockPrint()
+        # self.enablePrint()
+        self.blockPrint()
 
         # random.seed(10)
 
@@ -176,12 +176,11 @@ class Player(Bot):
         score = 0
 
         for _ in range(iters): #take 'iters' samples
-            deck.shuffle() #make sure our samples are random
 
             _COMM = 5 - len(community_cards) #the number of cards we need to draw
             _OPP = 2
 
-            draw = deck.peek(_COMM + _OPP)
+            draw = deck.sample(_COMM + _OPP)
 
             opp_hole = draw[: _OPP]
             hidden_community = draw[_OPP: ]

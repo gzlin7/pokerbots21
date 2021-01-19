@@ -134,10 +134,10 @@ class Player(Bot):
         board_strengths = {}
 
         for i in range(1, 4):
-            self.round.boards[i].strength_per_street[0] = self.calculate_strength(self.board_allocations[i-1], [], self._MONTE_CARLO_ITERS)
-            board_strengths[str(self.board_allocations[i-1])] = self.round.boards[i].strength_per_street[0]
+            self.round.boards[i].strength_per_street[0] = self.calculate_strength(self.board_allocations[i-1], my_cards, [], self._MONTE_CARLO_ITERS)
+            board_strengths[frozenset(self.board_allocations[i-1])] = self.round.boards[i].strength_per_street[0]
 
-        self.board_allocations.sort(key=lambda x: board_strengths[str(x)])
+        self.board_allocations.sort(key=lambda x: board_strengths[frozenset(x)])
 
         if self.RANDOMIZATION_ON:
             if random.random() < 0.15:  # swap strongest with second, makes our strategy non-deterministic!
@@ -150,7 +150,7 @@ class Player(Bot):
                 self.board_allocations[1] = self.board_allocations[0]
                 self.board_allocations[0] = temp
 
-    def calculate_strength(self, hole_cards, community_cards, iters):
+    def calculate_strength(self, hole_cards, my_cards, community_cards, iters):
         '''
         A Monte Carlo method meant to estimate the win probability of a pair of 
         hole cards. Simlulates 'iters' games and determines the win rates of our cards
@@ -164,10 +164,11 @@ class Player(Bot):
         start_sampling_time = time.time()
 
         deck = eval7.Deck() #eval7 object!
-        hole_cards = [eval7.Card(card) for card in hole_cards] #card objects, used to evaliate hands
-        community_cards = [eval7.Card(card) for card in community_cards]  # card objects, used to evaliate hands
+        hole_cards = [eval7.Card(card) for card in hole_cards if card] #card objects, used to evaliate hands
+        my_cards = [eval7.Card(card) for card in my_cards]
+        community_cards = [eval7.Card(card) for card in community_cards if card]  # card objects, used to evaliate hands
 
-        for card in hole_cards: #remove cards that we know about! they shouldn't come up in simulations
+        for card in my_cards: #remove cards that we know about! they shouldn't come up in simulations
             deck.cards.remove(card)
 
         for card in community_cards: #remove cards that we know about! they shouldn't come up in simulations
@@ -396,7 +397,7 @@ class Player(Bot):
                     strength = board.strength_per_street[round.current_street]
                 else:
                     print("Calculating strength")
-                    strength = self.calculate_strength(self.board_allocations[i], visible_community_cards, self._MONTE_CARLO_ITERS)
+                    strength = self.calculate_strength(self.board_allocations[i], my_cards, visible_community_cards, self._MONTE_CARLO_ITERS)
                     board.strength_per_street[round.current_street] = strength
 
                 print("Calculated strength of hole cards and board is", strength)

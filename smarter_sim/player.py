@@ -174,7 +174,7 @@ class Player(Bot):
         print("Calculating strength")
         print("Calculating strength")
         self.board_allocations.sort(
-            key=lambda x: self.calculate_strength(x, my_cards, [], 100))
+            key=lambda x: self.calculate_strength(x, my_cards, [], self._MONTE_CARLO_ITERS))
 
         if self.RANDOMIZATION_ON:
             if random.random() < 0.15:  # swap strongest with second, makes our strategy non-deterministic!
@@ -200,12 +200,16 @@ class Player(Bot):
         weight: optional parameter of how likely our opponent plays particular hands (hole strength threshhold)
         '''
         deck = eval7.Deck()  # eval7 object!
+
         # card objects, used to evaliate hands
         hole_cards = [eval7.Card(card) for card in hole_cards]
+
+        my_cards = [eval7.Card(card) for card in my_cards]
+
         # card objects, used to evaliate hands
         community_cards = [eval7.Card(card) for card in community_cards]
 
-        for card in hole_cards:  # remove cards that we know about! they shouldn't come up in simulations
+        for card in my_cards:  # remove cards that we know about! they shouldn't come up in simulations
             deck.cards.remove(card)
 
         for card in community_cards:  # remove cards that we know about! they shouldn't come up in simulations

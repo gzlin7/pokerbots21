@@ -10,6 +10,8 @@ from skeleton.runner import parse_args, run_bot
 import eval7
 import random
 import time
+import itertools
+import pandas as pd
 
 import sys
 import os
@@ -24,12 +26,14 @@ class Round:
     def __init__(self):
         self.current_street = 0
         self.boards = {1: Board(), 2: Board(), 3: Board()}
+        self.eval_count = 0
+        self.calculate_strength_called = 0
+        self.eval_hand_memo = {}
 
 
 class Board:
     def __init__(self):
         self.strength_per_street = {0: None, 3: None, 4: None, 5: None}
-        self.my_raises_per_street = {0: 0, 3: 0, 4: 0, 5: 0}
 
 
 class Player(Bot):
@@ -63,6 +67,28 @@ class Player(Bot):
 
         # random.seed(10)
 
+        # make sure this df isn't too big!! Loading data all at once might be slow if you did more computations!
+        # the values we computed offline, this df is slow to search through though
+        calculated_df = pd.read_csv('hole_evs.csv')
+        holes = calculated_df.Holes  # the columns of our spreadsheet
+        strengths = calculated_df.EVs
+        # convert to a dictionary, O(1) lookup time!
+        self.starting_strengths = dict(zip(holes, strengths))
+
+        # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
+        self.values = dict(zip('23456789TJQKA', range(2, 15)))
+
+        # build dict of EVs to sets of eval7 hand
+        self.ev_to_eval7hands = dict()
+        for hand in list(itertools.combinations(list(eval7.Deck()), 2)):
+            ev = self.get_ev(sorted([str(hand[0]), str(hand[1])],
+                                    key=lambda x: self.values[x[0]], reverse=True))
+            self.ev_to_eval7hands.setdefault(ev, set())
+            self.ev_to_eval7hands[ev].add(hand)
+
+        self.evs_descending = sorted(
+            self.ev_to_eval7hands.keys(), reverse=True)
+
     # Disable
 
     def blockPrint(self):
@@ -71,6 +97,31 @@ class Player(Bot):
     # Restore
     def enablePrint(self):
         sys.stdout = sys.__stdout__
+
+    # EVs https://www.tightpoker.com/poker_hands.html
+    def hole_to_key(self, hole):
+        '''
+        Converts a hole card list into a key that we can use to query our
+        strength dictionary
+
+        hole: list - A list of two card strings in the engine's format (Kd, As, Th, 7d, etc.)
+        '''
+        card_1 = hole[0]  # get all of our relevant info
+        card_2 = hole[1]
+
+        rank_1, suit_1 = card_1[0], card_1[1]  # card info
+        rank_2, suit_2 = card_2[0], card_2[1]
+
+        numeric_1, numeric_2 = rank_1, rank_2  # make numeric
+
+        suited = suit_1 == suit_2  # off-suit or not
+        suit_string = ' s' if suited else ''
+
+        return rank_1 + rank_2 + suit_string
+
+    def get_ev(self, hole):
+        hole_key = self.hole_to_key(hole)
+        return self.starting_strengths[hole_key]
 
     def allocate_cards(self, my_cards):
         '''
@@ -136,8 +187,17 @@ class Player(Bot):
         print("Calculating strength")
         print("Calculating strength")
         print("Calculating strength")
+
+        board_strengths = {}
+
+        for i in range(1, 4):
+            self.round.boards[i].strength_per_street[0] = self.calculate_strength(
+                self.board_allocations[i-1], my_cards, [], self._MONTE_CARLO_ITERS)
+            board_strengths[frozenset(
+                self.board_allocations[i-1])] = self.round.boards[i].strength_per_street[0]
+
         self.board_allocations.sort(
-            key=lambda x: self.calculate_strength(x, [], 100))
+            key=lambda x: board_strengths[frozenset(x)])
 
         if self.RANDOMIZATION_ON:
             if random.random() < 0.15:  # swap strongest with second, makes our strategy non-deterministic!
@@ -150,51 +210,87 @@ class Player(Bot):
                 self.board_allocations[1] = self.board_allocations[0]
                 self.board_allocations[0] = temp
 
-    def calculate_strength(self, hole_cards, community_cards, iters):
-        '''
-        A Monte Carlo method meant to estimate the win probability of a pair of 
-        hole cards. Simlulates 'iters' games and determines the win rates of our cards
+# # 5.2 Hand Strength
+# # https://webdocs.cs.ualberta.ca/~jonathan/PREVIOUS/Grad/papp/node38.html
 
+    def calculate_strength(self, hole_cards, my_cards, community_cards, iters, board=3):
+        '''
         Arguments:
-        hole: a list of our two hole cards
-        iters: a integer that determines how many Monte Carlo samples to take
+        hole_cards: a list of our two hole cards
+        my_cards: a list of all our 6 initial hole cards, since they can't appear elsewhere
+        community_cards: visible community cars
+        iters: # of MC iterations
+        board: optional parameter of which board is being played, consideration for opp ranges
         '''
-
-        start_sampling_time = time.time()
-
         deck = eval7.Deck()  # eval7 object!
+
         # card objects, used to evaliate hands
         hole_cards = [eval7.Card(card) for card in hole_cards]
+
+        my_cards = [eval7.Card(card) for card in my_cards]
+
         # card objects, used to evaliate hands
         community_cards = [eval7.Card(card) for card in community_cards]
 
-        for card in hole_cards:  # remove cards that we know about! they shouldn't come up in simulations
+        for card in my_cards:  # remove cards that we know about! they shouldn't come up in simulations
             deck.cards.remove(card)
 
         for card in community_cards:  # remove cards that we know about! they shouldn't come up in simulations
             deck.cards.remove(card)
 
+        # get more likely opp hands based on weight
+        # avoid repeats
+        opp_hands_to_try = set()
         score = 0
 
-        for _ in range(iters):  # take 'iters' samples
-            deck.shuffle()  # make sure our samples are random
+        possible_hands = set(itertools.combinations(deck, 2))
+
+        # there are 45 unique EV values
+        # TODO: come up with a better way to account for board in more clever weighting formula and based on real EV allocation stats from scrimmage gamelogs
+        starting_ev_idx = [-1, 30, 30, 0]
+
+        while len(opp_hands_to_try) < iters:
+            for i in range(starting_ev_idx[board], len(self.evs_descending)):
+                ev = self.evs_descending[i]
+                for hand in self.ev_to_eval7hands[ev]:
+                    if hand in possible_hands:
+                        # TODO: better strength weighting
+                        ev = min(1, ev + 0.2)
+                        if random.random() < ev and hand not in opp_hands_to_try:
+                            opp_hands_to_try.add(hand)
+                        if len(opp_hands_to_try) >= iters:
+                            break
+
+        for opp_hole in opp_hands_to_try:
 
             # the number of cards we need to draw
             _COMM = 5 - len(community_cards)
             _OPP = 2
 
-            draw = deck.peek(_COMM + _OPP)
+            draw = deck.sample(_COMM + _OPP)
 
-            opp_hole = draw[: _OPP]
             hidden_community = draw[_OPP:]
 
             our_hand = hole_cards + community_cards + \
                 hidden_community  # the two showdown hands
-            opp_hand = opp_hole + community_cards + hidden_community
+            opp_hand = list(opp_hole) + community_cards + hidden_community
+            our_key = frozenset(our_hand)
+            opp_key = frozenset(opp_hand)
 
-            # the ranks of our hands (only useful for comparisons)
-            our_hand_value = eval7.evaluate(our_hand)
-            opp_hand_value = eval7.evaluate(opp_hand)
+            if our_key not in self.round.eval_hand_memo:
+                # the ranks of our hands (only useful for comparisons)
+                our_hand_value = eval7.evaluate(our_hand)
+                self.round.eval_hand_memo[our_key] = our_hand_value
+                self.round.eval_count += 1
+            else:
+                our_hand_value = self.round.eval_hand_memo[our_key]
+
+            if opp_key not in self.round.eval_hand_memo:
+                opp_hand_value = eval7.evaluate(opp_hand)
+                self.round.eval_hand_memo[opp_key] = opp_hand_value
+                self.round.eval_count += 1
+            else:
+                opp_hand_value = self.round.eval_hand_memo[opp_key]
 
             if our_hand_value > opp_hand_value:  # we win!
                 score += 2
@@ -205,11 +301,8 @@ class Player(Bot):
             else:  # we lost....
                 score += 0
 
-        hand_strength = score / (2 * iters)  # this is our win probability!
-
-        sampling_duration = time.time() - start_sampling_time
-
-        self.sampling_duration_total += sampling_duration
+        # this is our win probability!
+        hand_strength = score / (2 * len(opp_hands_to_try))
 
         # print("sampling duration", sampling_duration)
 
@@ -413,7 +506,7 @@ class Player(Bot):
                 else:
                     print("Calculating strength")
                     strength = self.calculate_strength(
-                        self.board_allocations[i], visible_community_cards, self._MONTE_CARLO_ITERS)
+                        self.board_allocations[i], my_cards, visible_community_cards, self._MONTE_CARLO_ITERS, i+1)
                     board.strength_per_street[round.current_street] = strength
 
                 print("Calculated strength of hole cards and board is", strength)
@@ -445,7 +538,7 @@ class Player(Bot):
                 else:
                     # raise the stakes deeper into the game
                     raise_amount = int(
-                        my_pips[i] + board_cont_cost + 1.0 * (pot_total + board_cont_cost))
+                        my_pips[i] + board_cont_cost + 0.75 * (pot_total + board_cont_cost))
                     print("Desired post-flop raise amount is", raise_amount)
 
                 # make sure we have a valid raise
@@ -492,11 +585,12 @@ class Player(Bot):
                 if board_cont_cost > 0:  # our opp raised!!! we must respond
                     print(
                         "Opponent has raised. We must respond. Continue cost is", board_cont_cost)
-                    # if board_cont_cost > 5: #<--- parameters to tweak.
-                    #     print("Continue cost > 5 so we are intimidated.")
-                    #     _INTIMIDATION = 0.15
-                    #     strength = max([0, strength - _INTIMIDATION]) #if our opp raises a lot, be cautious!
-                    #     print("New strength is", strength)
+                    if board_cont_cost > 5:  # <--- parameters to tweak.
+                        print("Continue cost > 5 so we are intimidated.")
+                        _INTIMIDATION = 0.15
+                        # if our opp raises a lot, be cautious!
+                        strength = max([0, strength - _INTIMIDATION])
+                        print("New strength is", strength)
 
                     pot_odds = board_cont_cost / (pot_total + board_cont_cost)
                     print("Pot odds are", pot_odds)
@@ -505,19 +599,12 @@ class Player(Bot):
                     if strength >= pot_odds:  # Positive Expected Value!! at least call!!
                         print("Positive EV because strength >= pot odds")
 
-                        if strength > 0.9:  # raise sometimes, more likely if our hand is strong
+                        if strength > 0.5 and random.random() < strength:  # raise sometimes, more likely if our hand is strong
                             print(
-                                "High strength, so we then CommitAction with probability strength, costing",
-                                commit_cost)
+                                "High strength, so we then CommitAction with probability strength, costing", commit_cost)
                             print("CommitActioning")
                             my_actions[i] = commit_action
                             net_cost += commit_cost
-                            continue
-
-                        if random.random() < 0.7 and strength < 0.8 and street >= 3:
-                            if FoldAction in legal_actions[i]:
-                                my_actions[i] = FoldAction()
-                                continue
 
                         else:  # try to call if we don't raise
                             print(
@@ -542,31 +629,20 @@ class Player(Bot):
                 else:  # board_cont_cost == 0, we control the action
                     print("We control the action.")
 
-                    if strength > 0.9:  # raise sometimes, more likely if our hand is strong
+                    if random.random() < strength:  # raise sometimes, more likely if our hand is strong
                         print(
                             "We CommitAction with probability strength, costing", commit_cost)
                         print("CommitActioning")
                         my_actions[i] = commit_action
                         net_cost += commit_cost
-                        continue
-
-                    if strength < 0.8 and street >= 3:
-                        if random.random() < 0.3 and CheckAction in legal_actions[i]:
-                            my_actions[i] = CheckAction()
-                            continue
-                        else:
-                            if FoldAction in legal_actions[i]:
-                                my_actions[i] = FoldAction()
-                                continue
-                            elif CheckAction in legal_actions[i]:
-                                my_actions[i] = CheckAction()
-                                continue
 
                     else:  # just check otherwise
                         print("Outside probability strength, so just Checking")
                         my_actions[i] = CheckAction()
                         net_cost += 0
+                print("###########")
 
+            print()
             print("Done with this board")
             print()
 
@@ -580,3 +656,5 @@ class Player(Bot):
 
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
+    # print("hi")
+    # print(Player().hands_ev_descending)

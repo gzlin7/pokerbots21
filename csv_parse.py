@@ -42,10 +42,11 @@ class Player():
     # Disable
 
 if __name__ == '__main__':
-    hands = Player().starting_strengths.keys()
+    evs = list(Player().starting_strengths.values())
+    evs = list(set(evs))
+    evs.sort(reverse=True)
     enum_hands = []
-    deck = eval7.Deck()  # eval7 object!
-    hands_ev_descending = list(itertools.combinations(list(deck), 2))
-    hands_ev_descending.sort(key=lambda x: self.get_ev(sorted([str(x[0]), str(x[1])],
-                                                                   key=lambda x: self.values[x[0]], reverse=True)))
-    print(hands)
+    ranks = [""]
+    print(len(set(evs)))
+    print(evs[30])
+    print(evs)

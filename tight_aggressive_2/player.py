@@ -25,6 +25,7 @@ class Round:
 class Board:
     def __init__(self):
         self.strength_per_street = {0: None, 3: None, 4: None, 5: None}
+        self.my_raises_per_street = {0: 0, 3: 0, 4: 0, 5: 0}
 
 class Player(Bot):
     '''
@@ -49,8 +50,8 @@ class Player(Bot):
         self._MONTE_CARLO_ITERS = 100
         self.RANDOMIZATION_ON = False  # whether to randomize ordering of holes to avoid deterministic exploitation
 
-        self.enablePrint()
-        # self.blockPrint()
+        # self.enablePrint()
+        self.blockPrint()
 
         # random.seed(10)
 
@@ -393,7 +394,7 @@ class Player(Bot):
                     raise_amount = int(my_pips[i] + board_cont_cost + 0.4 * (pot_total + board_cont_cost)) #play a little conservatively pre-flop
                     print("Desired pre-flop raise amount is", raise_amount)
                 else:
-                    raise_amount = int(my_pips[i] + board_cont_cost + 0.75 * (pot_total + board_cont_cost)) #raise the stakes deeper into the game
+                    raise_amount = int(my_pips[i] + board_cont_cost + 1.0 * (pot_total + board_cont_cost)) #raise the stakes deeper into the game
                     print("Desired post-flop raise amount is", raise_amount)
 
 
@@ -431,61 +432,84 @@ class Player(Bot):
                 print()
 
                 print("###########")
-                if board_cont_cost > 0: #our opp raised!!! we must respond
-                    print("Opponent has raised. We must respond. Continue cost is", board_cont_cost)
-                    if board_cont_cost > 5: #<--- parameters to tweak.
-                        print("Continue cost > 5 so we are intimidated.")
-                        _INTIMIDATION = 0.15
-                        strength = max([0, strength - _INTIMIDATION]) #if our opp raises a lot, be cautious!
-                        print("New strength is", strength)
-
+                if board_cont_cost > 0:  # our opp raised!!! we must respond
+                    print(
+                        "Opponent has raised. We must respond. Continue cost is", board_cont_cost)
+                    # if board_cont_cost > 5: #<--- parameters to tweak.
+                    #     print("Continue cost > 5 so we are intimidated.")
+                    #     _INTIMIDATION = 0.15
+                    #     strength = max([0, strength - _INTIMIDATION]) #if our opp raises a lot, be cautious!
+                    #     print("New strength is", strength)
 
                     pot_odds = board_cont_cost / (pot_total + board_cont_cost)
                     print("Pot odds are", pot_odds)
                     print("Strength is", strength)
 
-                    if strength >= pot_odds: #Positive Expected Value!! at least call!!
+                    if strength >= pot_odds:  # Positive Expected Value!! at least call!!
                         print("Positive EV because strength >= pot odds")
 
-                        if strength > 0.5 and random.random() < strength: #raise sometimes, more likely if our hand is strong
-                            print("High strength, so we then CommitAction with probability strength, costing", commit_cost)
+                        if strength > 0.9:  # raise sometimes, more likely if our hand is strong
+                            print(
+                                "High strength, so we then CommitAction with probability strength, costing",
+                                commit_cost)
                             print("CommitActioning")
                             my_actions[i] = commit_action
                             net_cost += commit_cost
+                            continue
+
+                        if random.random() < 0.7 and strength < 0.8 and street >= 3:
+                                if FoldAction in legal_actions[i]:
+                                    my_actions[i] = FoldAction()
+                                    continue
 
                         else:  # try to call if we don't raise
-                            print("We'll just call because because not that high strength and outside of probability strength")
-                            if (board_cont_cost <= my_stack - net_cost):  # we call because we can afford it and it's +EV
+                            print(
+                                "We'll just call because because not that high strength and outside of probability strength")
+                            # we call because we can afford it and it's +EV
+                            if (board_cont_cost <= my_stack - net_cost):
                                 print("Calling, costing", board_cont_cost)
                                 my_actions[i] = CallAction()
                                 net_cost += board_cont_cost
 
-                            else:  # we can't afford to call :(  should have managed our stack better
+                            # we can't afford to call :(  should have managed our stack better
+                            else:
                                 print("Wanted to call but can't, Folding")
                                 my_actions[i] = FoldAction()
                                 net_cost += 0
-                    
-                    else: #Negative Expected Value!!! FOLD!!!
+
+                    else:  # Negative Expected Value!!! FOLD!!!
                         print("Negative EV, so folding")
                         my_actions[i] = FoldAction()
                         net_cost += 0
-                
-                else: #board_cont_cost == 0, we control the action
+
+                else:  # board_cont_cost == 0, we control the action
                     print("We control the action.")
 
-                    if random.random() < strength: #raise sometimes, more likely if our hand is strong
-                        print("We CommitAction with probability strength, costing", commit_cost)
+                    if strength > 0.9:  # raise sometimes, more likely if our hand is strong
+                        print(
+                            "We CommitAction with probability strength, costing", commit_cost)
                         print("CommitActioning")
                         my_actions[i] = commit_action
                         net_cost += commit_cost
+                        continue
 
-                    else: #just check otherwise
+                    if strength < 0.8 and street >= 3:
+                        if random.random() < 0.3 and CheckAction in legal_actions[i]:
+                            my_actions[i] = CheckAction()
+                            continue
+                        else:
+                            if FoldAction in legal_actions[i]:
+                                my_actions[i] = FoldAction()
+                                continue
+                            elif CheckAction in legal_actions[i]:
+                                my_actions[i] = CheckAction()
+                                continue
+
+                    else:  # just check otherwise
                         print("Outside probability strength, so just Checking")
                         my_actions[i] = CheckAction()
                         net_cost += 0
-                print("###########")
 
-            print()
             print("Done with this board")
             print()
 

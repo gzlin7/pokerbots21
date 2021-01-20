@@ -26,6 +26,9 @@ class Round:
     def __init__(self):
         self.current_street = 0
         self.boards = {1: Board(), 2: Board(), 3: Board()}
+        self.eval_count = 0
+        self.calculate_strength_called = 0
+        self.eval_hand_memo = {}
 
 
 class Board:
@@ -173,8 +176,17 @@ class Player(Bot):
         print("Calculating strength")
         print("Calculating strength")
         print("Calculating strength")
+
+        board_strengths = {}
+
+        for i in range(1, 4):
+            self.round.boards[i].strength_per_street[0] = self.calculate_strength(
+                self.board_allocations[i-1], my_cards, [], self._MONTE_CARLO_ITERS)
+            board_strengths[frozenset(
+                self.board_allocations[i-1])] = self.round.boards[i].strength_per_street[0]
+
         self.board_allocations.sort(
-            key=lambda x: self.calculate_strength(x, my_cards, [], self._MONTE_CARLO_ITERS))
+            key=lambda x: board_strengths[frozenset(x)])
 
         if self.RANDOMIZATION_ON:
             if random.random() < 0.15:  # swap strongest with second, makes our strategy non-deterministic!
@@ -227,32 +239,42 @@ class Player(Bot):
             ev = min(1, ev + 0.2)
             if random.random() < ev and hand not in opp_hands_to_try:
                 opp_hands_to_try.add(hand)
-            if len(opp_hands_to_try) >= iters:
-                break
-
-
+            # if len(opp_hands_to_try) >= iters:
+            #     break
 
         for opp_hole in opp_hands_to_try:
-            deck.shuffle()  # make sure our samples are random
 
             # the number of cards we need to draw
             _COMM = 5 - len(community_cards)
             _OPP = 2
 
-            draw = deck.peek(_COMM)
+            draw = deck.sample(_COMM + _OPP)
 
             hidden_community = draw[_OPP:]
 
             our_hand = hole_cards + community_cards + \
                 hidden_community  # the two showdown hands
             opp_hand = list(opp_hole) + community_cards + hidden_community
+            our_key = frozenset(our_hand)
+            opp_key = frozenset(opp_hand)
 
-            # the ranks of our hands (only useful for comparisons)
-            our_hand_value = eval7.evaluate(our_hand)
-            opp_hand_value = eval7.evaluate(opp_hand)
+            if our_key not in self.round.eval_hand_memo:
+                # the ranks of our hands (only useful for comparisons)
+                our_hand_value = eval7.evaluate(our_hand)
+                self.round.eval_hand_memo[our_key] = our_hand_value
+                self.round.eval_count += 1
+            else:
+                our_hand_value = self.round.eval_hand_memo[our_key]
+
+            if opp_key not in self.round.eval_hand_memo:
+                opp_hand_value = eval7.evaluate(opp_hand)
+                self.round.eval_hand_memo[opp_key] = opp_hand_value
+                self.round.eval_count += 1
+            else:
+                opp_hand_value = self.round.eval_hand_memo[opp_key]
 
             if our_hand_value > opp_hand_value:  # we win!
-                score += 2  # the pseudocode for HandStrength() uses +1 for both wins and ties?
+                score += 2
 
             elif our_hand_value == opp_hand_value:  # we tie.
                 score += 1

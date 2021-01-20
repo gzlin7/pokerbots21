@@ -575,12 +575,12 @@ class Player(Bot):
                 if board_cont_cost > 0:  # our opp raised!!! we must respond
                     print(
                         "Opponent has raised. We must respond. Continue cost is", board_cont_cost)
-                    if board_cont_cost > 5:  # <--- parameters to tweak.
-                        print("Continue cost > 5 so we are intimidated.")
-                        _INTIMIDATION = 0.15
-                        # if our opp raises a lot, be cautious!
-                        strength = max([0, strength - _INTIMIDATION])
-                        print("New strength is", strength)
+                    # if board_cont_cost > 5:  # <--- parameters to tweak.
+                    #     print("Continue cost > 5 so we are intimidated.")
+                    #     _INTIMIDATION = 0.15
+                    #     # if our opp raises a lot, be cautious!
+                    #     strength = max([0, strength - _INTIMIDATION])
+                    #     print("New strength is", strength)
 
                     pot_odds = board_cont_cost / (pot_total + board_cont_cost)
                     print("Pot odds are", pot_odds)
@@ -589,7 +589,7 @@ class Player(Bot):
                     if strength >= pot_odds:  # Positive Expected Value!! at least call!!
                         print("Positive EV because strength >= pot odds")
 
-                        if strength > 0.5 and random.random() < strength:  # raise sometimes, more likely if our hand is strong
+                        if strength > 0.9:  # raise sometimes, more likely if our hand is strong
                             print(
                                 "High strength, so we then CommitAction with probability strength, costing", commit_cost)
                             print("CommitActioning")
@@ -597,7 +597,7 @@ class Player(Bot):
                             net_cost += commit_cost
                             continue
 
-                        if strength < 0.8 and street >= 3:
+                        if random.random() < 0.7 and strength < 0.8 and street >= 3:
                             if FoldAction in legal_actions[i]:
                                 my_actions[i] = FoldAction()
                                 continue
@@ -625,7 +625,7 @@ class Player(Bot):
                 else:  # board_cont_cost == 0, we control the action
                     print("We control the action.")
 
-                    if random.random() < strength:  # raise sometimes, more likely if our hand is strong
+                    if strength > 0.9:  # raise sometimes, more likely if our hand is strong
                         print(
                             "We CommitAction with probability strength, costing", commit_cost)
                         print("CommitActioning")
@@ -634,12 +634,16 @@ class Player(Bot):
                         continue
 
                     if strength < 0.8 and street >= 3:
-                        if FoldAction in legal_actions[i]:
-                            my_actions[i] = FoldAction()
-                            continue
-                        elif CheckAction in legal_actions[i]:
+                        if random.random() < 0.3 and CheckAction in legal_actions[i]:
                             my_actions[i] = CheckAction()
                             continue
+                        else:
+                            if FoldAction in legal_actions[i]:
+                                my_actions[i] = FoldAction()
+                                continue
+                            elif CheckAction in legal_actions[i]:
+                                my_actions[i] = CheckAction()
+                                continue
 
                     else:  # just check otherwise
                         print("Outside probability strength, so just Checking")

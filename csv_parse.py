@@ -42,4 +42,10 @@ class Player():
     # Disable
 
 if __name__ == '__main__':
-    print(Player().starting_strengths['AK s'])
+    hands = Player().starting_strengths.keys()
+    enum_hands = []
+    deck = eval7.Deck()  # eval7 object!
+    hands_ev_descending = list(itertools.combinations(list(deck), 2))
+    hands_ev_descending.sort(key=lambda x: self.get_ev(sorted([str(x[0]), str(x[1])],
+                                                                   key=lambda x: self.values[x[0]], reverse=True)))
+    print(hands)

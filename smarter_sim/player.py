@@ -78,6 +78,17 @@ class Player(Bot):
         # https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
         self.values = dict(zip('23456789TJQKA', range(2, 15)))
 
+        # build dict of EVs to sets of eval7 hand
+        self.ev_to_eval7hands = dict()
+        for hand in list(itertools.combinations(list(eval7.Deck()), 2)):
+            ev = self.get_ev(sorted([str(hand[0]), str(hand[1])],
+                                    key=lambda x: self.values[x[0]], reverse=True))
+            self.ev_to_eval7hands.setdefault(ev, set())
+            self.ev_to_eval7hands[ev].add(hand)
+
+        self.evs_descending = sorted(
+            self.ev_to_eval7hands.keys(), reverse=True)
+
     # Disable
 
     def blockPrint(self):
@@ -232,15 +243,17 @@ class Player(Bot):
         opp_hands_to_try = set()
         score = 0
 
-        for hand in list(itertools.combinations(list(deck), 2)):
-            ev = self.get_ev(sorted([str(hand[0]), str(hand[1])],
-                                    key=lambda x: self.values[x[0]], reverse=True))
-            # TODO: better strength weighting
-            ev = min(1, ev + 0.2)
-            if random.random() < ev and hand not in opp_hands_to_try:
-                opp_hands_to_try.add(hand)
-            # if len(opp_hands_to_try) >= iters:
-            #     break
+        possible_hands = set(itertools.combinations(deck, 2))
+
+        for ev in self.evs_descending:
+            for hand in self.ev_to_eval7hands[ev]:
+                if hand in possible_hands:
+                    # TODO: better strength weighting
+                    ev = min(1, ev + 0.2)
+                    if random.random() < ev and hand not in opp_hands_to_try:
+                        opp_hands_to_try.add(hand)
+                    if len(opp_hands_to_try) >= iters:
+                        break
 
         for opp_hole in opp_hands_to_try:
 
@@ -637,3 +650,5 @@ class Player(Bot):
 
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
+    # print("hi")
+    # print(Player().hands_ev_descending)

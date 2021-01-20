@@ -62,8 +62,8 @@ class Player(Bot):
         # whether to randomize ordering of holes to avoid deterministic exploitation
         self.RANDOMIZATION_ON = False
 
-        # self.enablePrint()
-        self.blockPrint()
+        self.enablePrint()
+        # self.blockPrint()
 
         # random.seed(10)
 
@@ -88,7 +88,6 @@ class Player(Bot):
 
         self.evs_descending = sorted(
             self.ev_to_eval7hands.keys(), reverse=True)
-
     # Disable
 
     def blockPrint(self):
@@ -210,25 +209,22 @@ class Player(Bot):
                 self.board_allocations[1] = self.board_allocations[0]
                 self.board_allocations[0] = temp
 
-# # 5.2 Hand Strength
-# # https://webdocs.cs.ualberta.ca/~jonathan/PREVIOUS/Grad/papp/node38.html
-
-    def calculate_strength(self, hole_cards, my_cards, community_cards, iters, weight=None):
+    def calculate_strength(self, hole_cards, my_cards, community_cards, iters):
         '''
+        A Monte Carlo method meant to estimate the win probability of a pair of
+        hole cards. Simlulates 'iters' games and determines the win rates of our cards
+
         Arguments:
-        hole_cards: a list of our two hole cards
-        my_cards: a list of all our 6 initial hole cards, since they can't appear elsewhere
-        community_cards: visible community cars
-        iters: # of MC iterations
-        weight: optional parameter of how likely our opponent plays particular hands (hole strength threshhold)
+        hole: a list of our two hole cards
+        iters: a integer that determines how many Monte Carlo samples to take
         '''
-        deck = eval7.Deck()  # eval7 object!
 
+        start_sampling_time = time.time()
+
+        deck = eval7.Deck()  # eval7 object!
         # card objects, used to evaliate hands
         hole_cards = [eval7.Card(card) for card in hole_cards]
-
         my_cards = [eval7.Card(card) for card in my_cards]
-
         # card objects, used to evaliate hands
         community_cards = [eval7.Card(card) for card in community_cards]
 
@@ -237,7 +233,6 @@ class Player(Bot):
 
         for card in community_cards:  # remove cards that we know about! they shouldn't come up in simulations
             deck.cards.remove(card)
-
         # get more likely opp hands based on weight
         # avoid repeats
         opp_hands_to_try = set()
@@ -256,7 +251,6 @@ class Player(Bot):
                         break
 
         for opp_hole in opp_hands_to_try:
-
             # the number of cards we need to draw
             _COMM = 5 - len(community_cards)
             _OPP = 2
@@ -298,7 +292,9 @@ class Player(Bot):
         # this is our win probability!
         hand_strength = score / (2 * len(opp_hands_to_try))
 
-        # print("sampling duration", sampling_duration)
+        sampling_duration = time.time() - start_sampling_time
+
+        self.sampling_duration_total += sampling_duration
 
         return hand_strength
 
@@ -599,6 +595,12 @@ class Player(Bot):
                             print("CommitActioning")
                             my_actions[i] = commit_action
                             net_cost += commit_cost
+                            continue
+
+                        if strength < 0.8 and street >= 3:
+                            if FoldAction in legal_actions[i]:
+                                my_actions[i] = FoldAction()
+                                continue
 
                         else:  # try to call if we don't raise
                             print(
@@ -629,6 +631,15 @@ class Player(Bot):
                         print("CommitActioning")
                         my_actions[i] = commit_action
                         net_cost += commit_cost
+                        continue
+
+                    if strength < 0.8 and street >= 3:
+                        if FoldAction in legal_actions[i]:
+                            my_actions[i] = FoldAction()
+                            continue
+                        elif CheckAction in legal_actions[i]:
+                            my_actions[i] = CheckAction()
+                            continue
 
                     else:  # just check otherwise
                         print("Outside probability strength, so just Checking")
@@ -650,5 +661,3 @@ class Player(Bot):
 
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
-    # print("hi")
-    # print(Player().hands_ev_descending)

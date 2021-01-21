@@ -417,14 +417,23 @@ for round_pkr in rounds_data:
 		evs_A[i].append(round_pkr.boards[i].A_hole_ev)
 		evs_B[i].append(round_pkr.boards[i].B_hole_ev)
 
+def num_to_str(number):
+	return str(round(number,2))
 
-for i in range(1,4):
-	print("===== "+"BOARD "+ str(i) + " =====")
-	print("Win (A): " + str(win_count[i] / num_rounds))
-	print("Showdown Win: " + str(round(showdown_wins_A[i] / showdown_count[i],2)))
-	print()
-	print("Avg win amt (A): " + str(win_total_A[i] / num_rounds))
-	print("Avg win amt (B): " + str(win_total_B[i] / num_rounds))
+print("===== WINNINGS =====")
+for player in [A, B]:
+	for i in range(1, 4):
+		win_percent = win_count[i] / num_rounds
+		win_percent = win_percent if player == A else 1 - win_percent
+		showdown_win_percent = showdown_wins_A[i] / showdown_count[i]
+		showdown_win_percent = showdown_win_percent if player == A else 1 - showdown_win_percent
+		avg_winnings = win_total_A[i] if player == A else win_total_B[i]
+		avg_winnings /= num_rounds
+		print(player + " Board " + str(i) +
+			  ": win% " + num_to_str(win_percent) +
+			  "  showdown win% " + num_to_str(showdown_win_percent) +
+			  "  avg winnings " + num_to_str(avg_winnings)
+			  )
 	print()
 
 print("===== PLAYER BETTING =====")
@@ -446,9 +455,9 @@ print()
 
 print("===== HOLE ALLOCATION =====")
 num_games = 3 * num_rounds
-for player in ["A", "B"]:
+for player in [A, B]:
 	for i in range(1,4):
-		evs = evs_A if player == "A" else evs_B
+		evs = evs_A if player == A else evs_B
 		print(player + " Board " + str(i) + ": " + "mean " + str(round(statistics.mean(evs[i]), 3)) +
 			  "  stdev " + str(round(statistics.stdev(evs[i]), 3)))
 	print()

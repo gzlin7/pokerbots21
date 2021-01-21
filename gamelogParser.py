@@ -5,6 +5,9 @@ Parse poker gamelog into custom data structure
 import re
 import eval7
 import matplotlib.pyplot as plt
+import pandas as pd
+import statistics
+import itertools
 
 # assumes playing "A" vs "B"
 GAME_LOG_FILE = 'game_log.txt'
@@ -17,6 +20,15 @@ loglines = f.readlines()
 
 assignments = []
 
+# parse hole EV data https://www.tightpoker.com/poker_hands.html
+calculated_df = pd.read_csv('hole_evs.csv')
+holes = calculated_df.Holes
+strengths = calculated_df.EVs
+starting_strengths = dict(zip(holes, strengths))
+
+# rank order
+values = dict(zip('23456789TJQKA', range(2, 15)))
+
 class Board:
 	def __init__(self, num, pre_inflation):
 		self.num = num
@@ -25,6 +37,8 @@ class Board:
 		self.actions_per_street = {0: [], 3: [], 4: [], 5: []}
 		self.A_holes = []
 		self.B_holes = []
+		self.A_hole_ev = 0
+		self.B_hole_ev = 0
 		self.outcome = False
 		self.pot = pre_inflation
 		self.pips = {A : 0, B: 0}
@@ -45,6 +59,33 @@ class Round:
 
 	def __str__(self):
 		return str(self.__class__) + ": " + str(self.__dict__)
+
+
+def hole_to_key(hole):
+	'''
+    Converts a hole card list into a key that we can use to query our
+    strength dictionary
+
+    hole: list - A list of two card strings in the engine's format (Kd, As, Th, 7d, etc.)
+    '''
+	card_1 = hole[0]  # get all of our relevant info
+	card_2 = hole[1]
+
+	rank_1, suit_1 = card_1[0], card_1[1]  # card info
+	rank_2, suit_2 = card_2[0], card_2[1]
+
+	numeric_1, numeric_2 = rank_1, rank_2  # make numeric
+
+	suited = suit_1 == suit_2  # off-suit or not
+	suit_string = ' s' if suited else ''
+
+	return rank_1 + rank_2 + suit_string
+
+
+def get_ev(hole):
+	hole_key = hole_to_key(hole)
+	return starting_strengths[hole_key]
+
 
 def calculate_strength(hole_cards, community_cards, iters, opp_hole = None):
 	'''
@@ -179,10 +220,13 @@ while i < len(loglines):
 				player = line_arr[0]
 				hand = parse_hand(line)
 				board = int(line_arr[-1])
+				ev = get_ev(sorted(hand, key=lambda x: values[x[0]], reverse=True))
 				if player == A:
 					round_pkr.boards[board].A_holes = hand
+					round_pkr.boards[board].A_hole_ev = ev
 				else:
 					round_pkr.boards[board].B_holes = hand
+					round_pkr.boards[board].B_hole_ev = ev
 
 			if "posts" in line:
 				player = line_arr[0]
@@ -333,6 +377,10 @@ street_folds_A, street_folds_B = {0: 0, 3:0, 4:0, 5:0}, {0: 0, 3:0, 4:0, 5:0}
 showdown_count = {1: 0, 2:0, 3:0}
 showdown_wins_A = {1: 0, 2:0, 3:0}
 
+# EV stats
+evs_A = {1: [], 2:[], 3:[]}
+evs_B = {1: [], 2:[], 3:[]}
+
 for round_pkr in rounds_data:
 	for i in range(1,4):
 		outcome = round_pkr.boards[i].outcome
@@ -365,6 +413,11 @@ for round_pkr in rounds_data:
 			if a_won:
 				showdown_wins_A[i] += 1
 
+		# EV stats
+		evs_A[i].append(round_pkr.boards[i].A_hole_ev)
+		evs_B[i].append(round_pkr.boards[i].B_hole_ev)
+
+
 for i in range(1,4):
 	print("===== "+"BOARD "+ str(i) + " =====")
 	print("Win (A): " + str(win_count[i] / num_rounds))
@@ -390,6 +443,15 @@ print()
 for street in [0,3,4,5]:
 	print("Street " + str(street) + ": " + str(street_folds_B[street]))
 print()
+
+print("===== HOLE ALLOCATION =====")
+num_games = 3 * num_rounds
+for player in ["A", "B"]:
+	for i in range(1,4):
+		evs = evs_A if player == "A" else evs_B
+		print(player + " Board " + str(i) + ": " + "mean " + str(round(statistics.mean(evs[i]), 3)) +
+			  "  stdev " + str(round(statistics.stdev(evs[i]), 3)))
+	print()
 
 # for i in range(0, 10):
 # 	rounds_data_obj = rounds_data[i]

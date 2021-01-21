@@ -13,3 +13,5 @@ game_log.txt
 .vscode
 build/
 *.zip
+gamelog.txt
+.history/

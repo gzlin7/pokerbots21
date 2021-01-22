@@ -15,19 +15,8 @@ A = "A"
 B = "B"
 _MONTE_CARLO_ITERS = 100
 
-f = open(GAME_LOG_FILE)
-loglines = f.readlines()
-
-assignments = []
-
-# parse hole EV data https://www.tightpoker.com/poker_hands.html
-calculated_df = pd.read_csv('hole_evs.csv')
-holes = calculated_df.Holes
-strengths = calculated_df.EVs
-starting_strengths = dict(zip(holes, strengths))
-
-# rank order
-values = dict(zip('23456789TJQKA', range(2, 15)))
+# speed up by avoiding monte carlo simulation to determine strength, instead naive comparison of current hand strength using eval8
+ACCURATE_STRENGTH_SIM = False
 
 class Board:
 	def __init__(self, num, pre_inflation):
@@ -102,6 +91,11 @@ def calculate_strength(hole_cards, community_cards, iters, opp_hole = None):
 	deck = eval7.Deck()  # eval7 object!
 	hole_cards = [eval7.Card(card) for card in hole_cards if card]  # card objects, used to evaliate hands
 	community_cards = [eval7.Card(card) for card in community_cards if card]  # card objects, used to evaliate hands
+
+	# speed up parsing if we don't care about strength simulation - just return eval7 evaluate score
+	if not ACCURATE_STRENGTH_SIM:
+		return eval7.evaluate(hole_cards + community_cards)
+
 	if opp_hole:
 		opp_hole = [eval7.Card(card) for card in opp_hole if card]
 		for card in opp_hole:
@@ -175,8 +169,6 @@ def eval_hands(hole_a, hole_b, board_cards):
 
 	return winner, eval7.handtype(a_value), eval7.handtype(b_value)
 
-rounds_data = []
-
 cumulative_delta_a = 0
 cumulative_delta_b = 0
 cumulative_delta_a_series = []
@@ -185,87 +177,138 @@ cumulative_delta_b_series = []
 bad_aggressions = {0: {A: 0, B: 0}, 3: {A: 0, B: 0}, 4: {A: 0, B: 0}, 5: {A: 0, B: 0}}
 total_aggressions = {0: {A: 0, B: 0}, 3: {A: 0, B: 0}, 4: {A: 0, B: 0}, 5: {A: 0, B: 0}}
 
-i = 0
+# parse hole EV data https://www.tightpoker.com/poker_hands.html
+calculated_df = pd.read_csv('hole_evs.csv')
+holes = calculated_df.Holes
+strengths = calculated_df.EVs
+starting_strengths = dict(zip(holes, strengths))
 
+# rank order
+values = dict(zip('23456789TJQKA', range(2, 15)))
+
+######################################################################
+
+# store parsed data
+rounds_data = []
+
+# read in game log file
+f = open(GAME_LOG_FILE)
+loglines = f.readlines()
+
+# output file
+outfile = open("annotated_gamelog.txt", "w")
+
+# loop over game log
+i = 0
 while i < len(loglines):
 	line = loglines[i]
+	line_arr = line.split()
+
+	outfile.write(line)
+
+	# new round
 	if line.startswith("Round #"):
+
+		# reset winnings from opponent folds - factored into bankroll delta at end of round
 		fold_winnings_A = 0
 		fold_winnings_B = 0
-		round_num = line.split()[1]
-		round_num = int(round_num[1:len(round_num)-1])
-		round_pkr = Round(round_num)
-		while "awarded" not in line:
-			i += 1
+
+		round_num = int(line.split()[1][1:len(line.split()[1])-1])
+		curr_round = Round(round_num)
+
+		i += 1
+
+		while "awarded" not in loglines[i]:
 			line = loglines[i]
 			line_arr = line.split()
 
-			# new street
+			if "dealt" in line:
+				outfile.write(line)
+
+			if "illegal" in line:
+				print(line)
+				outfile.write(line)
+
+			# summary of settled board at new street
+			if "Board 1, (" in line or "Board 2, (" in line or "Board 3, (" in line:
+				outfile.write(line)
+
+			# new street/betting round
 			if "River" in line or "Flop" in line or "Turn" in line:
+				outfile.write(line)
 				street_str_to_int = {"Flop": 0, "Turn": 4, "River": 5}
 				if "Flop" in line:
-					round_pkr.street = 3
+					curr_round.street = 3
 				elif "Turn" in line:
-					round_pkr.street = 4
+					curr_round.street = 4
 				elif "River" in line:
-					round_pkr.street = 5
+					curr_round.street = 5
 				community_cards = parse_hand(line)
-				board = int(line_arr[-1])
-				round_pkr.boards[board].community_cards = community_cards
-				round_pkr.boards[board].community_cards_per_street[round_pkr.street] = community_cards
-				for board in range(1, 4):
-					round_pkr.boards[board].pips = {A: 0, B: 0}
+				board_num = int(line_arr[-1])
+				curr_round.boards[board_num].community_cards = community_cards
+				curr_round.boards[board_num].community_cards_per_street[curr_round.street] = community_cards
+				for board_num in range(1, 4):
+					curr_round.boards[board_num].pips = {A: 0, B: 0}
 
 			if "assigns" in line:
+				outfile.write(line)
 				player = line_arr[0]
 				hand = parse_hand(line)
-				board = int(line_arr[-1])
+				board_num = int(line_arr[-1])
+				curr_board = curr_round.boards[board_num]
 				ev = get_ev(sorted(hand, key=lambda x: values[x[0]], reverse=True))
 				if player == A:
-					round_pkr.boards[board].A_holes = hand
-					round_pkr.boards[board].A_hole_ev = ev
+					curr_board.A_holes = hand
+					curr_board.A_hole_ev = ev
 				else:
-					round_pkr.boards[board].B_holes = hand
-					round_pkr.boards[board].B_hole_ev = ev
+					curr_board.B_holes = hand
+					curr_board.B_hole_ev = ev
 
 			if "posts" in line:
+				outfile.write(line)
 				player = line_arr[0]
 				blind_amt = int(line_arr[5])
-				for board in range(1, 4):
-					round_pkr.boards[board].pips[player] += blind_amt
-					round_pkr.boards[board].pot += blind_amt
-					round_pkr.bankrolls[player] -= blind_amt
+				for board_num in range(1, 4):
+					curr_round.boards[board_num].pips[player] += blind_amt
+					curr_round.boards[board_num].pot += blind_amt
+					curr_round.bankrolls[player] -= blind_amt
 
-			if "calls" in line or "raises" in line or "bets" in line or "folds" in line:
+			# betting action
+			if "calls" in line or "raises" in line or "bets" in line or "folds" in line or "checks" in line:
+				outfile.write(line)
 				player = line_arr[0]
 				other_player = B if player == A else A
-				board = int(line_arr[-1])
+				board_num = int(line_arr[-1])
+				curr_board = curr_round.boards[board_num]
 
-				a_strength = calculate_strength(round_pkr.boards[board].A_holes,
-												round_pkr.boards[board].community_cards, _MONTE_CARLO_ITERS,
-												round_pkr.boards[board].B_holes)
-				b_strength = calculate_strength(round_pkr.boards[board].B_holes,
-												round_pkr.boards[board].community_cards, _MONTE_CARLO_ITERS,
-												round_pkr.boards[board].A_holes)
+				a_strength = calculate_strength(curr_board.A_holes,
+												curr_board.community_cards, _MONTE_CARLO_ITERS,
+												curr_board.B_holes)
+				b_strength = calculate_strength(curr_board.B_holes,
+												curr_board.community_cards, _MONTE_CARLO_ITERS,
+												curr_board.A_holes)
 				if a_strength > b_strength:
 					forecasted_winner = A
 				elif b_strength > a_strength:
 					forecasted_winner = B
 				else:
 					forecasted_winner = "TIE"
-				# winner, a_hand_desc, b_hand_desc = eval_hands(round_pkr.boards[board].A_holes, round_pkr.boards[board].B_holes,
-				# 		   round_pkr.boards[board].community_cards)
+				# winner, a_hand_desc, b_hand_desc = eval_hands(curr_board.A_holes, curr_board.B_holes,
+				# 		   curr_board.community_cards)
+
+				if "checks" in line:
+					pass
 
 				if "calls" in line:
-					continue_cost = round_pkr.boards[board].pips[other_player] - round_pkr.boards[board].pips[player]
+					continue_cost = curr_board.pips[other_player] - curr_board.pips[player]
 
-					round_pkr.boards[board].pips[player] += continue_cost
-					round_pkr.boards[board].pot += continue_cost
-					round_pkr.bankrolls[player] -= continue_cost
+					curr_board.pips[player] += continue_cost
+					curr_board.pot += continue_cost
+					curr_round.bankrolls[player] -= continue_cost
 
 					action = {"Type": "Call", "Player": player, "Cost": continue_cost, "Forecasted Winner": forecasted_winner}
 
-					round_pkr.boards[board].actions_per_street[round_pkr.street].append(action)
+					curr_board.actions_per_street[curr_round.street].append(action)
 
 					# not quite an aggression
 					# if forecasted_winner != player:
@@ -273,88 +316,94 @@ while i < len(loglines):
 
 				if "raises" in line:
 					raise_to = int(line_arr[3])
-					raise_cost = raise_to - round_pkr.boards[board].pips[player]
+					raise_cost = raise_to - curr_board.pips[player]
 
-					round_pkr.boards[board].pips[player] += raise_cost
-					round_pkr.boards[board].pot += raise_cost
-					round_pkr.bankrolls[player] -= raise_cost
+					curr_board.pips[player] += raise_cost
+					curr_board.pot += raise_cost
+					curr_round.bankrolls[player] -= raise_cost
 
 					action = {"Type": "Raise", "Player": player, "Cost": raise_cost, "To": raise_to,
 							  "Forecasted Winner": forecasted_winner}
 
-					round_pkr.boards[board].actions_per_street[round_pkr.street].append(action)
+					curr_board.actions_per_street[curr_round.street].append(action)
 
-					total_aggressions[round_pkr.street][player] += 1
+					total_aggressions[curr_round.street][player] += 1
 
 					if forecasted_winner != player:
-						bad_aggressions[round_pkr.street][player] += 1
+						bad_aggressions[curr_round.street][player] += 1
 
 				if "bets" in line:
 					bet_amount = int(line_arr[2])
 
-					round_pkr.boards[board].pips[player] += bet_amount
-					round_pkr.boards[board].pot += bet_amount
-					round_pkr.bankrolls[player] -= bet_amount
+					curr_board.pips[player] += bet_amount
+					curr_board.pot += bet_amount
+					curr_round.bankrolls[player] -= bet_amount
 
 					action = {"Type": "Bet", "Player": player, "Cost": bet_amount,
 							  "Forecasted Winner": forecasted_winner}
 
-					round_pkr.boards[board].actions_per_street[round_pkr.street].append(action)
+					curr_board.actions_per_street[curr_round.street].append(action)
 
-					total_aggressions[round_pkr.street][player] += 1
+					total_aggressions[curr_round.street][player] += 1
 
 					if forecasted_winner != player:
-						bad_aggressions[round_pkr.street][player] += 1
+						bad_aggressions[curr_round.street][player] += 1
 
 				if "folds" in line:
 
 					a_had_better = (A == forecasted_winner)
 					tie = (forecasted_winner == "TIE")
 
-					round_pkr.boards[board].outcome = {"Method": "Fold", "Winner": other_player, "A hand type": "not evaluated",
-												   "B hand type": "not evaluated", "Winnings": round_pkr.boards[board].pot - round_pkr.boards[board].pips[other_player], "A_better_hand": a_had_better, "Tied Hands": tie}
+					curr_board.outcome = {"Method": "Fold", "Winner": other_player, "A hand type": "not evaluated",
+												   "B hand type": "not evaluated", "Winnings": curr_board.pot - curr_board.pips[other_player], "A_better_hand": a_had_better, "Tied Hands": tie}
 
 					if other_player == A:
-						fold_winnings_A += round_pkr.boards[board].pot
+						fold_winnings_A += curr_board.pot
 					else:
-						fold_winnings_B += round_pkr.boards[board].pot
+						fold_winnings_B += curr_board.pot
 
 					action = {"Type": "Fold", "Player": player,
 							  "Forecasted Winner": forecasted_winner}
 
-					round_pkr.boards[board].actions_per_street[round_pkr.street].append(action)
-
-
+					curr_board.actions_per_street[curr_round.street].append(action)
 
 			if "shows" in line:
-				board = int(line_arr[-1])
-				forecasted_winner, a_hand_desc, b_hand_desc = eval_hands(round_pkr.boards[board].A_holes, round_pkr.boards[board].B_holes, round_pkr.boards[board].community_cards)
+				outfile.write(line)
+				board_num = int(line_arr[-1])
+				curr_board = curr_round.boards[board_num]
+
+				forecasted_winner, a_hand_desc, b_hand_desc = eval_hands(curr_board.A_holes, curr_board.B_holes, curr_board.community_cards)
 
 				res = []
 				if forecasted_winner == "TIE":
-					round_pkr.boards[board].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
-											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot // 2 - round_pkr.boards[board].pips[other_player]} # not quite
-					round_pkr.bankrolls[A] += round_pkr.boards[board].pot // 2
-					round_pkr.bankrolls[B] += round_pkr.boards[board].pot // 2
+					curr_round.boards[board_num].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
+											B + " hand type": b_hand_desc, "Winnings": curr_board.pot // 2 - curr_board.pips[other_player]} # not quite
+					curr_round.bankrolls[A] += curr_board.pot // 2
+					curr_round.bankrolls[B] += curr_board.pot // 2
 				else:
-					round_pkr.boards[board].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
-											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot - round_pkr.boards[board].pips[other_player]}
-					round_pkr.bankrolls[forecasted_winner] += round_pkr.boards[board].pot
+					curr_round.boards[board_num].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
+											B + " hand type": b_hand_desc, "Winnings": curr_board.pot - curr_board.pips[other_player]}
+					curr_round.bankrolls[forecasted_winner] += curr_board.pot
 
 				# handled this showdown, skip next line - check that this doesn't break anything in the future, eg printing line by line
 				i += 1
+				outfile.write(loglines[i])
+			i += 1
 
-		if "awarded" in line:
-			round_pkr.bankrolls[A] += fold_winnings_A
-			round_pkr.bankrolls[B] += fold_winnings_B
-			round_pkr.deltas[A] = round_pkr.bankrolls[A] - 200
-			round_pkr.deltas[B] = round_pkr.bankrolls[B] - 200
-			cumulative_delta_a += round_pkr.deltas[A]
-			cumulative_delta_b += round_pkr.deltas[B]
+		if "awarded" in loglines[i]:
+			outfile.write(loglines[i])
+			curr_round.bankrolls[A] += fold_winnings_A
+			curr_round.bankrolls[B] += fold_winnings_B
+			curr_round.deltas[A] = curr_round.bankrolls[A] - 200
+			curr_round.deltas[B] = curr_round.bankrolls[B] - 200
+			cumulative_delta_a += curr_round.deltas[A]
+			cumulative_delta_b += curr_round.deltas[B]
 			cumulative_delta_a_series.append(cumulative_delta_a)
 			cumulative_delta_b_series.append(cumulative_delta_b)
+			i += 1
+			outfile.write(loglines[i])
 
-		rounds_data.append(round_pkr)
+		rounds_data.append(curr_round)
 
 	i += 1
 
@@ -381,9 +430,9 @@ showdown_wins_A = {1: 0, 2:0, 3:0}
 evs_A = {1: [], 2:[], 3:[]}
 evs_B = {1: [], 2:[], 3:[]}
 
-for round_pkr in rounds_data:
+for curr_round in rounds_data:
 	for i in range(1,4):
-		outcome = round_pkr.boards[i].outcome
+		outcome = curr_round.boards[i].outcome
 		a_won = outcome["Winner"] == A
 
 		# Win % and average winnings per board
@@ -399,12 +448,12 @@ for round_pkr in rounds_data:
 				total_folds_B += 1
 				if (not outcome["A_better_hand"]) or outcome["Tied Hands"]:
 					bad_folds_B += 1
-				street_folds_B[len(round_pkr.boards[i].community_cards)] += 1
+				street_folds_B[len(curr_round.boards[i].community_cards)] += 1
 			else:
 				total_folds_A += 1
 				if outcome["A_better_hand"] or outcome["Tied Hands"]:
 					bad_folds_A += 1
-				street_folds_A[len(round_pkr.boards[i].community_cards)] += 1
+				street_folds_A[len(curr_round.boards[i].community_cards)] += 1
 
 
 		# Showdown stats
@@ -414,8 +463,8 @@ for round_pkr in rounds_data:
 				showdown_wins_A[i] += 1
 
 		# EV stats
-		evs_A[i].append(round_pkr.boards[i].A_hole_ev)
-		evs_B[i].append(round_pkr.boards[i].B_hole_ev)
+		evs_A[i].append(curr_round.boards[i].A_hole_ev)
+		evs_B[i].append(curr_round.boards[i].B_hole_ev)
 
 def num_to_str(number):
 	return str(round(number,2))

@@ -312,7 +312,7 @@ while i < len(loglines):
 					tie = (forecasted_winner == "TIE")
 
 					round_pkr.boards[board].outcome = {"Method": "Fold", "Winner": other_player, "A hand type": "not evaluated",
-												   "B hand type": "not evaluated", "Winnings": round_pkr.boards[board].pot, "A_better_hand": a_had_better, "Tied Hands": tie}
+												   "B hand type": "not evaluated", "Winnings": round_pkr.boards[board].pot - round_pkr.boards[board].pips[other_player], "A_better_hand": a_had_better, "Tied Hands": tie}
 
 					if other_player == A:
 						fold_winnings_A += round_pkr.boards[board].pot
@@ -333,12 +333,12 @@ while i < len(loglines):
 				res = []
 				if forecasted_winner == "TIE":
 					round_pkr.boards[board].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
-											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot // 2} # not quite
+											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot // 2 - round_pkr.boards[board].pips[other_player]} # not quite
 					round_pkr.bankrolls[A] += round_pkr.boards[board].pot // 2
 					round_pkr.bankrolls[B] += round_pkr.boards[board].pot // 2
 				else:
 					round_pkr.boards[board].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
-											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot}
+											B + " hand type": b_hand_desc, "Winnings": round_pkr.boards[board].pot - round_pkr.boards[board].pips[other_player]}
 					round_pkr.bankrolls[forecasted_winner] += round_pkr.boards[board].pot
 
 				# handled this showdown, skip next line - check that this doesn't break anything in the future, eg printing line by line
@@ -427,11 +427,13 @@ for player in [A, B]:
 		win_percent = win_percent if player == A else 1 - win_percent
 		showdown_win_percent = showdown_wins_A[i] / showdown_count[i]
 		showdown_win_percent = showdown_win_percent if player == A else 1 - showdown_win_percent
+		total_winnings = win_total_A[i] if player == A else win_total_B[i]
 		avg_winnings = win_total_A[i] if player == A else win_total_B[i]
 		avg_winnings /= num_rounds
 		print(player + " Board " + str(i) +
 			  ": win% " + num_to_str(win_percent) +
 			  "  showdown win% " + num_to_str(showdown_win_percent) +
+			  "  total winnings " + num_to_str(total_winnings) +
 			  "  avg winnings " + num_to_str(avg_winnings)
 			  )
 	print()

@@ -34,7 +34,8 @@ class Round:
 class Board:
     def __init__(self):
         self.strength_per_street = {0: None, 3: None, 4: None, 5: None}
-
+        self.raises_per_street = {0: 0, 3: 0, 4: 0, 5: 0}
+        self.raises_weighted = 0
 
 class Player(Bot):
     '''
@@ -88,6 +89,8 @@ class Player(Bot):
 
         self.evs_descending = sorted(
             self.ev_to_eval7hands.keys(), reverse=True)
+
+        self.street_to_raise_weight = {0: 1, 3: 4, 4: 5, 5: 7}
 
     # Disable
 
@@ -506,6 +509,9 @@ class Player(Bot):
                 print("Calculated strength of hole cards and board is", strength)
                 print()
 
+                # strength2 = pow(strength, board.raises_weighted / 5)
+                # strength2 = strength - (board.raises_weighted / 50)
+
                 print("Round of active play")
                 print("Our stack has", my_stack - net_cost)
                 # we need to pay this to keep playing
@@ -579,12 +585,30 @@ class Player(Bot):
                 if board_cont_cost > 0:  # our opp raised!!! we must respond
                     print(
                         "Opponent has raised. We must respond. Continue cost is", board_cont_cost)
+
+                    new_raises = 0
+                    # fix assumption
+                    if board_cont_cost == 1:
+                        print("Assuming opponent played big blind, this is meaningless.")
+                    elif my_pips[i] == 0:
+                        new_raises += 0.5
+                        print("Opponent has bet")
+                    else:
+                        new_raises += 1
+                        print("Opponent has raised")
+
+                    new_raises *= self.street_to_raise_weight[round.current_street]
+                    board.raises_per_street[round.current_street] += 1
+                    board.raises_weighted += new_raises
+
                     if board_cont_cost > 5:  # <--- parameters to tweak.
                         print("Continue cost > 5 so we are intimidated.")
                         _INTIMIDATION = 0.15
                         # if our opp raises a lot, be cautious!
                         strength = max([0, strength - _INTIMIDATION])
                         print("New strength is", strength)
+
+                    print("Total raises on st", street, "are", board.raises_weighted)
 
                     pot_odds = board_cont_cost / (pot_total + board_cont_cost)
                     print("Pot odds are", pot_odds)

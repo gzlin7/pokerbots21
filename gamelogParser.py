@@ -6,14 +6,19 @@ import re
 import eval7
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
+import math
 import statistics
 import itertools
+from sklearn.neighbors import KernelDensity
+import scipy.stats
 
 # assumes playing "A" vs "B"
 GAME_LOG_FILE = 'game_log.txt'
-A = "A"
-B = "B"
+A = "Hero"
+B = "Villain"
 _MONTE_CARLO_ITERS = 100
+DONT_CALC_STR = True
 
 f = open(GAME_LOG_FILE)
 loglines = f.readlines()
@@ -98,6 +103,8 @@ def calculate_strength(hole_cards, community_cards, iters, opp_hole = None):
     hole: a list of our two hole cards
     iters: a integer that determines how many Monte Carlo samples to take
     '''
+	if DONT_CALC_STR:
+		return 1
 
 	deck = eval7.Deck()  # eval7 object!
 	hole_cards = [eval7.Card(card) for card in hole_cards if card]  # card objects, used to evaliate hands
@@ -453,6 +460,33 @@ for street in [0,3,4,5]:
 	print("Street " + str(street) + ": " + str(street_folds_B[street]))
 print()
 
+calculated_df = pd.read_csv('hole_evs.csv')
+holes = calculated_df.Holes  # the columns of our spreadsheet
+strengths = calculated_df.EVs
+# convert to a dictionary, O(1) lookup time!
+starting_strengths = dict(zip(holes, strengths))
+
+# https://www.daniweb.com/programming/software-development/threads/303283/sorting-cards, is this in eval7?
+values = dict(zip('23456789TJQKA', range(2, 15)))
+
+# build dict of EVs to sets of eval7 hand
+ev_to_eval7hands = dict()
+for hand in list(itertools.combinations(list(eval7.Deck()), 2)):
+	ev = get_ev(sorted([str(hand[0]), str(hand[1])],
+							key=lambda x: values[x[0]], reverse=True))
+	ev_to_eval7hands.setdefault(ev, set())
+	ev_to_eval7hands[ev].add(hand)
+
+evs_ascending = sorted(
+	ev_to_eval7hands.keys())
+
+# evs_ascending = np.array(evs_ascending).reshape(1, -1)
+
+# hole_df.to_csv('hole_strengths.csv', index=False)  # save it for later use, trade space for time!
+
+
+ev_probs = {A: {1: {}, 2: {}, 3: {}}, B: {1: {}, 2: {}, 3: {}}}
+
 print("===== HOLE ALLOCATION =====")
 num_games = 3 * num_rounds
 for player in [A, B]:
@@ -460,7 +494,38 @@ for player in [A, B]:
 		evs = evs_A if player == A else evs_B
 		print(player + " Board " + str(i) + ": " + "mean " + str(round(statistics.mean(evs[i]), 3)) +
 			  "  stdev " + str(round(statistics.stdev(evs[i]), 3)))
+
+		data = evs[i]
+
+		plt.xlim([min(data) - 0.1, max(data) + 0.1])
+
+		plt.hist(data, bins=20, alpha=0.5)
+		plt.title(player + 'EVs, Board' + str(i))
+		plt.xlabel('variable EV (20 evenly spaced bins)')
+		plt.ylabel('count')
+
+		plt.show()
+
+		kde = scipy.stats.gaussian_kde(data)
+
+		for ev in evs_ascending:
+			kd_val = kde.integrate_box_1d(ev - 0.01, ev + 0.01)
+			ev_probs[player][i][ev] = kd_val
+
+
+
 	print()
+
+
+
+# for player in [A, B]:
+# 	for board in range(1, 4):
+# 		d = ev_probs[player][board]
+# 		factor = 1.0 / sum(d.values())
+# 		for k in d:
+# 			d[k] = d[k] * factor
+
+print(ev_probs[A])
 
 # for i in range(0, 10):
 # 	rounds_data_obj = rounds_data[i]

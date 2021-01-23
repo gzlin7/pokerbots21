@@ -16,7 +16,7 @@ B = "B"
 _MONTE_CARLO_ITERS = 100
 
 # speed up by avoiding monte carlo simulation to determine strength, instead naive comparison of current hand strength using eval8
-ACCURATE_STRENGTH_SIM = True
+ACCURATE_STRENGTH_SIM = False
 
 class Board:
 	def __init__(self, num, pre_inflation):
@@ -492,8 +492,10 @@ while i < len(loglines):
 
 					if other_player == A:
 						fold_winnings_A += curr_board.pot
+						print("A wins Board", board_num, "net winnings", curr_board.pot - curr_board.pips[other_player], file=outfile)
 					else:
 						fold_winnings_B += curr_board.pot
+						print("B wins Board", board_num, "net winnings", curr_board.pot - curr_board.pips[other_player], file=outfile)
 
 					action = {"Type": "Fold", "Player": player,
 							  "Forecasted Winner": forecasted_winner}
@@ -513,16 +515,17 @@ while i < len(loglines):
 											B + " hand type": b_hand_desc, "Winnings": curr_board.pot // 2 - curr_board.pips[other_player]} # not quite
 					curr_round.bankrolls[A] += curr_board.pot // 2
 					curr_round.bankrolls[B] += curr_board.pot // 2
+					outfile.write(loglines[i+1])
 					print("Tie on Board", board_num, "winnings...", file=outfile)
 				else:
 					curr_round.boards[board_num].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
 											B + " hand type": b_hand_desc, "Winnings": curr_board.pot - curr_board.pips[other_player]}
 					curr_round.bankrolls[forecasted_winner] += curr_board.pot
+					outfile.write(loglines[i+1])
 					print(forecasted_winner, "wins Board", board_num, "net winnings", curr_board.pot - curr_board.pips[other_player], file=outfile)
 
 				# handled this showdown, skip next line - check that this doesn't break anything in the future, eg printing line by line
 				i += 1
-				outfile.write(loglines[i])
 
 			i += 1
 

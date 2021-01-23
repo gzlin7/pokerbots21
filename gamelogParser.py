@@ -1,7 +1,7 @@
 '''
 Parse poker gamelog into custom data structure
 '''
-
+import random
 import re
 import eval7
 import matplotlib.pyplot as plt
@@ -16,7 +16,7 @@ B = "B"
 _MONTE_CARLO_ITERS = 100
 
 # speed up by avoiding monte carlo simulation to determine strength, instead naive comparison of current hand strength using eval8
-ACCURATE_STRENGTH_SIM = False
+ACCURATE_STRENGTH_SIM = True
 
 class Board:
 	def __init__(self, num, pre_inflation):
@@ -45,10 +45,24 @@ class Round:
 		self.bankrolls = {A : 200, B : 200}
 		self.deltas = {A : 0, B : 0}
 		self.street = 0
+		self.A_cards = []
+		self.B_cards = []
+		self.eval_hand_memo = {}
+		self.eval_count = 0
 
 	def __str__(self):
 		return str(self.__class__) + ": " + str(self.__dict__)
 
+# parse hole EV data https://www.tightpoker.com/poker_hands.html
+calculated_df = pd.read_csv('hole_evs.csv')
+holes = calculated_df.Holes
+strengths = calculated_df.EVs
+starting_strengths = dict(zip(holes, strengths))
+
+# rank order
+values = dict(zip('23456789TJQKA', range(2, 15)))
+
+# build dict of EVs to sets of eval7 hand
 
 def hole_to_key(hole):
 	'''
@@ -75,8 +89,125 @@ def get_ev(hole):
 	hole_key = hole_to_key(hole)
 	return starting_strengths[hole_key]
 
+ev_to_eval7hands = dict()
+for hand in list(itertools.combinations(list(eval7.Deck()), 2)):
+	ev = get_ev(sorted([str(hand[0]), str(hand[1])],
+							key=lambda x: values[x[0]], reverse=True))
+	ev_to_eval7hands.setdefault(ev, set())
+	ev_to_eval7hands[ev].add(hand)
 
-def calculate_strength(hole_cards, community_cards, iters, opp_hole = None):
+evs_descending = sorted(
+	ev_to_eval7hands.keys(), reverse=True)
+
+def num_to_str(number):
+	return str(round(number,2))
+
+
+
+
+# new, optimized version from updated bots
+def calculate_strength(hole_cards, my_cards, community_cards, iters, weight=None, board=3, opp_hole=None):
+	'''
+    Arguments:
+    hole_cards: a list of our two hole cards
+    my_cards: a list of all our 6 initial hole cards, since they can't appear elsewhere
+    community_cards: visible community cars
+    iters: # of MC iterations
+    weight: optional parameter of how likely our opponent plays particular hands (hole strength threshhold)
+    '''
+
+	deck = eval7.Deck()  # eval7 object!
+
+	# card objects, used to evaliate hands
+	hole_cards = [eval7.Card(card) for card in hole_cards]
+
+	my_cards = [eval7.Card(card) for card in my_cards]
+
+
+	# card objects, used to evaliate hands
+	community_cards = [eval7.Card(card) for card in community_cards]
+
+	# speed up parsing if we don't care about strength simulation - just return eval7 evaluate score
+	if not ACCURATE_STRENGTH_SIM:
+		return eval7.evaluate(hole_cards + community_cards)
+
+	if opp_hole:
+		opp_hole = [eval7.Card(card) for card in opp_hole if card]
+		for card in opp_hole:
+			deck.cards.remove(card)
+
+	for card in my_cards:  # remove cards that we know about! they shouldn't come up in simulations
+		deck.cards.remove(card)
+
+	for card in community_cards:  # remove cards that we know about! they shouldn't come up in simulations
+		deck.cards.remove(card)
+
+	# get more likely opp hands based on weight
+	# avoid repeats
+	opp_hands_to_try = set()
+	score = 0
+
+	possible_hands = set(itertools.combinations(deck, 2))
+
+	for ev in evs_descending:
+		for hand in ev_to_eval7hands[ev]:
+			if hand in possible_hands:
+				# TODO: better strength weighting
+				ev = min(1, ev + 0.2)
+				if random.random() < ev and hand not in opp_hands_to_try:
+					opp_hands_to_try.add(hand)
+				if len(opp_hands_to_try) >= iters:
+					break
+
+	for opp_hole in opp_hands_to_try:
+
+		# the number of cards we need to draw
+		_COMM = 5 - len(community_cards)
+		_OPP = 2
+
+		draw = deck.sample(_COMM + _OPP)
+
+		hidden_community = draw[_OPP:]
+
+		our_hand = hole_cards + community_cards + \
+				   hidden_community  # the two showdown hands
+		opp_hand = list(opp_hole) + community_cards + hidden_community
+		our_key = frozenset(our_hand)
+		opp_key = frozenset(opp_hand)
+
+		if our_key not in curr_round.eval_hand_memo:
+			# the ranks of our hands (only useful for comparisons)
+			our_hand_value = eval7.evaluate(our_hand)
+			curr_round.eval_hand_memo[our_key] = our_hand_value
+			curr_round.eval_count += 1
+		else:
+			our_hand_value = curr_round.eval_hand_memo[our_key]
+
+		if opp_key not in curr_round.eval_hand_memo:
+			opp_hand_value = eval7.evaluate(opp_hand)
+			curr_round.eval_hand_memo[opp_key] = opp_hand_value
+			curr_round.eval_count += 1
+		else:
+			opp_hand_value = curr_round.eval_hand_memo[opp_key]
+
+		if our_hand_value > opp_hand_value:  # we win!
+			score += 2
+
+		elif our_hand_value == opp_hand_value:  # we tie.
+			score += 1
+
+		else:  # we lost....
+			score += 0
+
+	# this is our win probability!
+	hand_strength = score / (2 * len(opp_hands_to_try))
+
+	# print("sampling duration", sampling_duration)
+
+	return hand_strength
+
+
+def naive_calculate_strength(hole_cards, community_cards, iters, opp_hole = None):
 	'''
     A Monte Carlo method meant to estimate the win probability of a pair of
     hole cards. Simlulates 'iters' games and determines the win rates of our cards
@@ -177,14 +308,7 @@ cumulative_delta_b_series = []
 bad_aggressions = {0: {A: 0, B: 0}, 3: {A: 0, B: 0}, 4: {A: 0, B: 0}, 5: {A: 0, B: 0}}
 total_aggressions = {0: {A: 0, B: 0}, 3: {A: 0, B: 0}, 4: {A: 0, B: 0}, 5: {A: 0, B: 0}}
 
-# parse hole EV data https://www.tightpoker.com/poker_hands.html
-calculated_df = pd.read_csv('hole_evs.csv')
-holes = calculated_df.Holes
-strengths = calculated_df.EVs
-starting_strengths = dict(zip(holes, strengths))
 
-# rank order
-values = dict(zip('23456789TJQKA', range(2, 15)))
 
 ######################################################################
 
@@ -223,6 +347,11 @@ while i < len(loglines):
 			line_arr = line.split()
 
 			if "dealt" in line:
+				player = line_arr[0]
+				if player == A:
+					curr_round.A_cards = parse_hand(line)
+				else:
+					curr_round.B_cards = parse_hand(line)
 				outfile.write(line)
 
 			if "illegal" in line:
@@ -251,18 +380,22 @@ while i < len(loglines):
 					curr_round.boards[board_num].pips = {A: 0, B: 0}
 
 			if "assigns" in line:
-				outfile.write(line)
 				player = line_arr[0]
 				hand = parse_hand(line)
 				board_num = int(line_arr[-1])
 				curr_board = curr_round.boards[board_num]
 				ev = get_ev(sorted(hand, key=lambda x: values[x[0]], reverse=True))
+
 				if player == A:
 					curr_board.A_holes = hand
 					curr_board.A_hole_ev = ev
+					strength = calculate_strength(curr_board.A_holes, curr_round.A_cards, [], _MONTE_CARLO_ITERS)
 				else:
 					curr_board.B_holes = hand
 					curr_board.B_hole_ev = ev
+					strength = calculate_strength(curr_board.B_holes, curr_round.B_cards, [], _MONTE_CARLO_ITERS)
+
+				outfile.write(line[:-1] + ", with EV " + str(ev) + " and strength " + num_to_str(strength) + "\n")
 
 			if "posts" in line:
 				outfile.write(line)
@@ -281,10 +414,10 @@ while i < len(loglines):
 				board_num = int(line_arr[-1])
 				curr_board = curr_round.boards[board_num]
 
-				a_strength = calculate_strength(curr_board.A_holes,
+				a_strength = calculate_strength(curr_board.A_holes, curr_round.A_cards,
 												curr_board.community_cards, _MONTE_CARLO_ITERS,
 												curr_board.B_holes)
-				b_strength = calculate_strength(curr_board.B_holes,
+				b_strength = calculate_strength(curr_board.B_holes, curr_round.B_cards,
 												curr_board.community_cards, _MONTE_CARLO_ITERS,
 												curr_board.A_holes)
 				if a_strength > b_strength:
@@ -380,14 +513,17 @@ while i < len(loglines):
 											B + " hand type": b_hand_desc, "Winnings": curr_board.pot // 2 - curr_board.pips[other_player]} # not quite
 					curr_round.bankrolls[A] += curr_board.pot // 2
 					curr_round.bankrolls[B] += curr_board.pot // 2
+					print("Tie on Board", board_num, "winnings...", file=outfile)
 				else:
 					curr_round.boards[board_num].outcome = {"Method": "Showdown", "Winner": forecasted_winner, A + " hand type": a_hand_desc,
 											B + " hand type": b_hand_desc, "Winnings": curr_board.pot - curr_board.pips[other_player]}
 					curr_round.bankrolls[forecasted_winner] += curr_board.pot
+					print(forecasted_winner, "wins Board", board_num, "net winnings", curr_board.pot - curr_board.pips[other_player], file=outfile)
 
 				# handled this showdown, skip next line - check that this doesn't break anything in the future, eg printing line by line
 				i += 1
 				outfile.write(loglines[i])
+
 			i += 1
 
 		if "awarded" in loglines[i]:
@@ -465,9 +601,6 @@ for curr_round in rounds_data:
 		# EV stats
 		evs_A[i].append(curr_round.boards[i].A_hole_ev)
 		evs_B[i].append(curr_round.boards[i].B_hole_ev)
-
-def num_to_str(number):
-	return str(round(number,2))
 
 print("===== WINNINGS =====")
 for player in [A, B]:

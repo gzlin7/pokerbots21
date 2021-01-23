@@ -5,7 +5,7 @@ Find distribution of which board opponent plays their strongest hand on
 import re
 import eval7
 
-GAME_LOG_FILE = 'gamelog.txt'
+GAME_LOG_FILE = 'game_log.txt'
 
 
 def calculate_strength(hole_cards, community_cards, iters):

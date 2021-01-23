@@ -249,15 +249,20 @@ class Player(Bot):
 
         possible_hands = set(itertools.combinations(deck, 2))
 
-        for ev in self.evs_descending:
-            for hand in self.ev_to_eval7hands[ev]:
-                if hand in possible_hands:
-                    # TODO: better strength weighting
-                    ev = min(1, ev + 0.2)
-                    if random.random() < ev and hand not in opp_hands_to_try:
-                        opp_hands_to_try.add(hand)
-                    if len(opp_hands_to_try) >= iters:
-                        break
+        evs_to_try = self.ev_to_eval7hands
+        if board_num == 1:
+            evs_to_try = [e for e in self.ev_to_eval7hands if e < 0.1]
+
+        while len(opp_hands_to_try) <= iters:
+            for ev in evs_to_try:
+                for hand in self.ev_to_eval7hands[ev]:
+                    if hand in possible_hands:
+                        # TODO: better strength weighting
+                        ev = min(1, ev + 0.2)
+                        if random.random() < ev and hand not in opp_hands_to_try:
+                            opp_hands_to_try.add(hand)
+                        if len(opp_hands_to_try) >= iters:
+                            break
 
         for opp_hole in opp_hands_to_try:
 

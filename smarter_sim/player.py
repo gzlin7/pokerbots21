@@ -37,6 +37,7 @@ class Board:
         self.raises_per_street = {0: 0, 3: 0, 4: 0, 5: 0}
         self.raises_weighted = 0
 
+
 class Player(Bot):
     '''
     A pokerbot.
@@ -216,14 +217,15 @@ class Player(Bot):
 # # 5.2 Hand Strength
 # # https://webdocs.cs.ualberta.ca/~jonathan/PREVIOUS/Grad/papp/node38.html
 
-    def calculate_strength(self, hole_cards, my_cards, community_cards, iters, weight=None):
+    def calculate_strength(self, hole_cards, my_cards, community_cards, iters, board_num=3):
         '''
         Arguments:
         hole_cards: a list of our two hole cards
         my_cards: a list of all our 6 initial hole cards, since they can't appear elsewhere
         community_cards: visible community cars
         iters: # of MC iterations
-        weight: optional parameter of how likely our opponent plays particular hands (hole strength threshhold)
+        # (1,2, or 3); defaults to 3 (greedy)
+        board_num: optional param of board
         '''
         deck = eval7.Deck()  # eval7 object!
 
@@ -503,7 +505,7 @@ class Player(Bot):
                 else:
                     print("Calculating strength")
                     strength = self.calculate_strength(
-                        self.board_allocations[i], my_cards, visible_community_cards, self._MONTE_CARLO_ITERS)
+                        self.board_allocations[i], my_cards, visible_community_cards, self._MONTE_CARLO_ITERS, i+1)
                     board.strength_per_street[round.current_street] = strength
 
                 print("Calculated strength of hole cards and board is", strength)
@@ -589,7 +591,8 @@ class Player(Bot):
                     new_raises = 0
                     # fix assumption
                     if board_cont_cost == 1:
-                        print("Assuming opponent played big blind, this is meaningless.")
+                        print(
+                            "Assuming opponent played big blind, this is meaningless.")
                     elif my_pips[i] == 0:
                         new_raises += 0.5
                         print("Opponent has bet")
@@ -608,7 +611,8 @@ class Player(Bot):
                         strength = max([0, strength - _INTIMIDATION])
                         print("New strength is", strength)
 
-                    print("Total raises on st", street, "are", board.raises_weighted)
+                    print("Total raises on st", street,
+                          "are", board.raises_weighted)
 
                     pot_odds = board_cont_cost / (pot_total + board_cont_cost)
                     print("Pot odds are", pot_odds)

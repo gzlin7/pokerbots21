@@ -15,8 +15,8 @@ import scipy.stats
 
 # assumes playing "A" vs "B"
 GAME_LOG_FILE = 'game_log.txt'
-A = "Hero"
-B = "Villain"
+A = "A"
+B = "B"
 _MONTE_CARLO_ITERS = 100
 DONT_CALC_STR = True
 
@@ -518,14 +518,14 @@ for player in [A, B]:
 
 
 
-# for player in [A, B]:
-# 	for board in range(1, 4):
-# 		d = ev_probs[player][board]
-# 		factor = 1.0 / sum(d.values())
-# 		for k in d:
-# 			d[k] = d[k] * factor
+for player in [A, B]:
+	for board in range(1, 4):
+		d = ev_probs[player][board]
+		factor = 1.0 / sum(d.values())
+		for k in d:
+			d[k] = d[k] * factor
 
-print(ev_probs[A])
+print(ev_probs[B])
 
 # for i in range(0, 10):
 # 	rounds_data_obj = rounds_data[i]

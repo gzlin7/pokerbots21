@@ -1,6 +1,9 @@
 '''
 Record a set of actions for a player we are trying to model
 Train opponent model using actions csv at https://colab.research.google.com/drive/1Bw1D8HyClH456cXAmM6dssDQQxmILobI?usp=sharing
+
+TODO: record board number, average opponent EV per board, opponent tightness/agg/fold rate over the course of game, during this game, ...
+TODO: parse whether the modeled player is A or B based on filename -> play a lot more games and gather more data
 '''
 import random
 import re

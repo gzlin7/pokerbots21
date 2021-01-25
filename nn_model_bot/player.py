@@ -19,11 +19,13 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 
+
 class Model(nn.Module):
 
     def __init__(self, embedding_size, num_numerical_cols, output_size, layers, p=0.4):
         super().__init__()
-        self.all_embeddings = nn.ModuleList([nn.Embedding(ni, nf) for ni, nf in embedding_size])
+        self.all_embeddings = nn.ModuleList(
+            [nn.Embedding(ni, nf) for ni, nf in embedding_size])
         self.embedding_dropout = nn.Dropout(p)
         self.batch_norm_num = nn.BatchNorm1d(num_numerical_cols)
 
@@ -44,8 +46,8 @@ class Model(nn.Module):
 
     def forward(self, x_categorical, x_numerical):
         embeddings = []
-        for i,e in enumerate(self.all_embeddings):
-            embeddings.append(e(x_categorical[:,i]))
+        for i, e in enumerate(self.all_embeddings):
+            embeddings.append(e(x_categorical[:, i]))
         x = torch.cat(embeddings, 1)
         x = self.embedding_dropout(x)
 
@@ -53,7 +55,6 @@ class Model(nn.Module):
         x = torch.cat([x, x_numerical], 1)
         x = self.layers(x)
         return x
-
 
 
 class Game:
@@ -102,13 +103,14 @@ class Player(Bot):
         # whether to randomize ordering of holes to avoid deterministic exploitation
         self.RANDOMIZATION_ON = False
 
-        # self.enablePrint()
-        self.blockPrint()
+        self.enablePrint()
+        # self.blockPrint()
 
         # random.seed(10)
 
         # nn model
         self.model = torch.load('loosey_goosey_model.pkl')
+        self.model.eval()
         self.categorical_columns = ['street']
         self.numerical_columns = ['strength',
                                   'potodds', 'bankroll', 'opp_raises']
@@ -135,6 +137,9 @@ class Player(Bot):
                 row_data[i + len(self.numerical_columns)]]
         row_df = pd.DataFrame(data=d)
         # create model input
+        for category in self.categorical_columns:
+            row_df[category] = row_df[category].astype('category')
+
         categorical_row_data = np.stack(
             [row_df[var_name].cat.codes.values for var_name in self.categorical_columns], 1)
         categorical_row_data = torch.tensor(
@@ -146,6 +151,7 @@ class Player(Bot):
             numerical_row_data, dtype=torch.float)
         # evaluate and get action
         y_val = self.model(categorical_row_data, numerical_row_data)
+        y_val = y_val.detach().numpy()
         return self.action_types[np.argmax(y_val).item()]
 
     def allocate_cards(self, my_cards):
@@ -608,7 +614,8 @@ class Player(Bot):
                     print("Pot odds are", pot_odds)
                     print("Strength is", strength)
 
-                    model_action = self.get_action(strength, pot_odds, my_stack - net_cost, board.opp_raises, street)
+                    model_action = self.get_action(
+                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street)
 
                     if model_action == "RAISE":
                         my_actions[i] = commit_action

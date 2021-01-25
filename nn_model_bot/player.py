@@ -92,24 +92,25 @@ class Player(Bot):
         # create dataframe
         row_data = [strength, potodds, bankroll, opp_raises, street]
         d = {}
-        for i in range(len(numerical_columns)):
-            d[numerical_columns[i]] = [row_data[i]]
-        for i in range(len(categorical_columns)):
-            d[categorical_columns[i]] = [row_data[i + len(numerical_columns)]]
+        for i in range(len(self.numerical_columns)):
+            d[self.numerical_columns[i]] = [row_data[i]]
+        for i in range(len(self.categorical_columns)):
+            d[self.categorical_columns[i]] = [
+                row_data[i + len(self.numerical_columns)]]
         row_df = pd.DataFrame(data=d)
         # create model input
         categorical_row_data = np.stack(
-            [row_df[var_name].cat.codes.values for var_name in categorical_columns], 1)
+            [row_df[var_name].cat.codes.values for var_name in self.categorical_columns], 1)
         categorical_row_data = torch.tensor(
             categorical_row_data, dtype=torch.int64)
 
         numerical_row_data = np.stack(
-            [row_df[col].values for col in numerical_columns], 1)
+            [row_df[col].values for col in self.numerical_columns], 1)
         numerical_row_data = torch.tensor(
             numerical_row_data, dtype=torch.float)
         # evaluate and get action
         y_val = self.model(categorical_row_data, numerical_row_data)
-        return self.action_types[self.np.argmax(y_val).item()]
+        return self.action_types[np.argmax(y_val).item()]
 
     def allocate_cards(self, my_cards):
         '''

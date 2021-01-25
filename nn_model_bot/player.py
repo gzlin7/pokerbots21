@@ -18,7 +18,42 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+
+class Model(nn.Module):
+
+    def __init__(self, embedding_size, num_numerical_cols, output_size, layers, p=0.4):
+        super().__init__()
+        self.all_embeddings = nn.ModuleList([nn.Embedding(ni, nf) for ni, nf in embedding_size])
+        self.embedding_dropout = nn.Dropout(p)
+        self.batch_norm_num = nn.BatchNorm1d(num_numerical_cols)
+
+        all_layers = []
+        num_categorical_cols = sum((nf for ni, nf in embedding_size))
+        input_size = num_categorical_cols + num_numerical_cols
+
+        for i in layers:
+            all_layers.append(nn.Linear(input_size, i))
+            all_layers.append(nn.ReLU(inplace=True))
+            all_layers.append(nn.BatchNorm1d(i))
+            all_layers.append(nn.Dropout(p))
+            input_size = i
+
+        all_layers.append(nn.Linear(layers[-1], output_size))
+
+        self.layers = nn.Sequential(*all_layers)
+
+    def forward(self, x_categorical, x_numerical):
+        embeddings = []
+        for i,e in enumerate(self.all_embeddings):
+            embeddings.append(e(x_categorical[:,i]))
+        x = torch.cat(embeddings, 1)
+        x = self.embedding_dropout(x)
+
+        x_numerical = self.batch_norm_num(x_numerical)
+        x = torch.cat([x, x_numerical], 1)
+        x = self.layers(x)
+        return x
+
 
 
 class Game:
@@ -38,6 +73,7 @@ class Round:
 class Board:
     def __init__(self):
         self.strength_per_street = {0: None, 3: None, 4: None, 5: None}
+        self.opp_raises = 0
 
 
 class Player(Bot):
@@ -77,7 +113,7 @@ class Player(Bot):
         self.numerical_columns = ['strength',
                                   'potodds', 'bankroll', 'opp_raises']
         self.outputs = ['type']
-        self.action_types = [CallAction(), FoldAction(), RaiseAction()]
+        self.action_types = ["CALL", "FOLD", "RAISE"]
 
     # Disable
 
@@ -557,6 +593,8 @@ class Player(Bot):
 
                 print("###########")
                 if board_cont_cost > 0:  # our opp raised!!! we must respond
+                    if board_cont_cost > 1:
+                        board.opp_raises += 1
                     print(
                         "Opponent has raised. We must respond. Continue cost is", board_cont_cost)
                     if board_cont_cost > 5:  # <--- parameters to tweak.
@@ -569,6 +607,20 @@ class Player(Bot):
                     pot_odds = board_cont_cost / (pot_total + board_cont_cost)
                     print("Pot odds are", pot_odds)
                     print("Strength is", strength)
+
+                    model_action = self.get_action(strength, pot_odds, my_stack - net_cost, board.opp_raises, street)
+
+                    if model_action == "RAISE":
+                        my_actions[i] = commit_action
+                        net_cost += commit_cost
+                        continue
+                    elif model_action == "CALL":
+                        my_actions[i] = CallAction()
+                        net_cost += board_cont_cost
+                        continue
+                    elif model_action == "FOLD":
+                        my_actions[i] = FoldAction()
+                        continue
 
                     if strength >= pot_odds:  # Positive Expected Value!! at least call!!
                         print("Positive EV because strength >= pot odds")

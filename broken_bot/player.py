@@ -339,6 +339,8 @@ class Player(Bot):
         Your actions.
         '''
 
+        HELLO I AM BORKEN
+
         print("*** get_actions called ***")
         print()
         legal_actions = round_state.legal_actions()  # the actions you are allowed to take

@@ -109,13 +109,18 @@ class Player(Bot):
         # random.seed(10)
 
         # nn model
-        self.model = torch.load('loosey_goosey_model.pkl')
-        self.model.eval()
-        self.categorical_columns = ['street']
+        self.response_model = torch.load('loosey_goosey_model.pkl')
+        self.response_model.eval()
+
+        self.initiate_model = torch.load('loosey_goosey_model_only_bet_and_check.pkl')
+        self.initiate_model.eval()
+
+        self.categorical_columns = ['street', 'board']
         self.numerical_columns = ['strength',
                                   'potodds', 'bankroll', 'opp_raises']
         self.outputs = ['type']
-        self.action_types = ["CALL", "FOLD", "RAISE"]
+        self.action_types_response = ["CALL", "FOLD", "RAISE"]
+        self.action_types_initiate = ["BET", "CHECK"]
 
     # Disable
 
@@ -126,9 +131,9 @@ class Player(Bot):
     def enablePrint(self):
         sys.stdout = sys.__stdout__
 
-    def get_action(self, strength, potodds, bankroll, opp_raises, street):
+    def get_action(self, strength, potodds, bankroll, opp_raises, street, board, is_response):
         # create dataframe
-        row_data = [strength, potodds, bankroll, opp_raises, street]
+        row_data = [strength, potodds, bankroll, opp_raises, street, board]
         d = {}
         for i in range(len(self.numerical_columns)):
             d[self.numerical_columns[i]] = [row_data[i]]
@@ -150,9 +155,16 @@ class Player(Bot):
         numerical_row_data = torch.tensor(
             numerical_row_data, dtype=torch.float)
         # evaluate and get action
-        y_val = self.model(categorical_row_data, numerical_row_data)
-        y_val = y_val.detach().numpy()
-        return self.action_types[np.argmax(y_val).item()]
+        if is_response:
+            y_val = self.response_model(categorical_row_data, numerical_row_data)
+            y_val = y_val.detach().numpy()
+            return self.action_types_response[np.argmax(y_val).item()]
+        else:
+            y_val = self.initiate_model(categorical_row_data, numerical_row_data)
+            y_val = y_val.detach().numpy()
+            return self.action_types_initiate[np.argmax(y_val).item()]
+
+
 
     def allocate_cards(self, my_cards):
         '''
@@ -615,7 +627,7 @@ class Player(Bot):
                     print("Strength is", strength)
 
                     model_action = self.get_action(
-                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street)
+                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street, i+1, is_response=True)
 
                     if model_action == "RAISE":
                         my_actions[i] = commit_action
@@ -661,6 +673,19 @@ class Player(Bot):
 
                 else:  # board_cont_cost == 0, we control the action
                     print("We control the action.")
+
+                    pot_odds = 0
+
+                    model_action = self.get_action(
+                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street, i+1, is_response=False)
+
+                    if model_action == "BET":
+                        my_actions[i] = commit_action
+                        net_cost += commit_cost
+                        continue
+                    elif model_action == "CHECK":
+                        my_actions[i] = CheckAction()
+                        continue
 
                     if random.random() < strength:  # raise sometimes, more likely if our hand is strong
                         print(

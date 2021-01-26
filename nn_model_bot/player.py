@@ -158,10 +158,12 @@ class Player(Bot):
         if is_response:
             y_val = self.response_model(categorical_row_data, numerical_row_data)
             y_val = y_val.detach().numpy()
+            print("Response model action is", self.action_types_response[np.argmax(y_val).item()])
             return self.action_types_response[np.argmax(y_val).item()]
         else:
             y_val = self.initiate_model(categorical_row_data, numerical_row_data)
             y_val = y_val.detach().numpy()
+            print("Initiate model action is", self.action_types_initiate[np.argmax(y_val).item()])
             return self.action_types_initiate[np.argmax(y_val).item()]
 
 
@@ -627,7 +629,7 @@ class Player(Bot):
                     print("Strength is", strength)
 
                     model_action = self.get_action(
-                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street, i+1, is_response=True)
+                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street, i+1, True)
 
                     if model_action == "RAISE":
                         my_actions[i] = commit_action
@@ -677,7 +679,7 @@ class Player(Bot):
                     pot_odds = 0
 
                     model_action = self.get_action(
-                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street, i+1, is_response=False)
+                        strength, pot_odds, my_stack - net_cost, board.opp_raises, street, i+1, False)
 
                     if model_action == "BET":
                         my_actions[i] = commit_action
